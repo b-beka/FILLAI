@@ -1,9 +1,41 @@
 import { Node, Link } from '@/types/graph';
-import { getCategories } from '@/data/mockStore';
+import { categoriesApi, coursesApi } from '@/services/apiClient';
+import { adaptApiCourseToCourse } from '@/services/courseAdapter';
 
 // Generate nodes from categories and courses
-export function generateNodes(): Node[] {
-  const categories = getCategories().filter((cat) => cat.courses.length > 0); // Только категории с курсами
+export async function generateNodes(): Promise<Node[]> {
+  try {
+    const [apiCategories, apiCourses] = await Promise.all([
+      categoriesApi.list(),
+      coursesApi.list()
+    ]);
+
+    const adaptedCourses = apiCourses.map(adaptApiCourseToCourse);
+    
+    // Group courses by category
+    const categoriesMap = new Map<string, { id: string; label: string; courses: typeof adaptedCourses }>();
+    
+    apiCategories.forEach(cat => {
+      categoriesMap.set(cat.id, {
+        id: cat.id,
+        label: cat.label,
+        courses: []
+      });
+    });
+
+    adaptedCourses.forEach(course => {
+      const categoryId = course.category || 'other';
+      if (!categoriesMap.has(categoryId)) {
+        categoriesMap.set(categoryId, {
+          id: categoryId,
+          label: 'Без категории',
+          courses: []
+        });
+      }
+      categoriesMap.get(categoryId)!.courses.push(course);
+    });
+
+    const categories = Array.from(categoriesMap.values()).filter((cat) => cat.courses.length > 0);
   const nodes: Node[] = [];
 
   // Центральный узел "Вы" - корень дерева
@@ -83,48 +115,7 @@ export function generateNodes(): Node[] {
   return nodes;
 }
 
-// Generate links from nodes structure
-export function generateLinks(nodes: Node[], expandedCategories?: Set<string>): Link[] {
-  const links: Link[] = [];
-  const categories = getCategories().filter(cat => cat.courses.length > 0); // Только категории с курсами
-  const centerNode = nodes.find(n => n.id === 'center');
-
-  if (!centerNode || categories.length === 0) return links;
-
-  // Связь центра с группами (категориями)
-  categories.forEach((category) => {
-    const categoryNode = nodes.find(n => n.id === category.id);
-    if (!categoryNode) return;
-
-    // Линия: "Вы" -> группа
-    links.push({
-      id: `center-${category.id}`,
-      source: 'center',
-      target: category.id,
-      strength: 1,
-    });
-
-    // Линии: группа -> каждый курс в этой группе (только если категория раскрыта)
-    const isExpanded = expandedCategories ? expandedCategories.has(category.id) : true;
-    if (isExpanded) {
-      category.courses.forEach((course) => {
-        const courseNode = nodes.find(n => n.id === course.id);
-        if (!courseNode) return;
-
-        links.push({
-          id: `${category.id}-${course.id}`,
-          source: category.id,
-          target: course.id,
-          strength: 0.8,
-        });
-      });
-    }
-  });
-
-  return links;
-}
-
-// Initial graph data structure
-export const initialNodes: Node[] = generateNodes();
-export const initialLinks: Link[] = generateLinks(initialNodes, new Set());
+// Note: generateNodes and generateLinks are now replaced by adaptApiDataToGraph in graphAdapter.ts
+// This file is kept for backward compatibility but the main logic is in graphAdapter.ts
+// The graphStore uses adaptApiDataToGraph instead of these functions
 

@@ -5,17 +5,33 @@ import { motion } from 'framer-motion';
 import { useGraphStore } from '@/store/graphStore';
 import { useUIStore } from '@/store/uiStore';
 import { PhysicsEngine } from '@/lib/physicsEngine';
-import { getCategories } from '@/data/mockStore';
 import NodeComponent from './Node';
 import NodeLink from './NodeLink';
-import { Maximize2 } from 'lucide-react';
+import Toolbar from './Toolbar';
+import StickyNoteComponent from './StickyNoteComponent';
+import { Maximize2, FileText } from 'lucide-react';
 
 export default function GraphCanvas() {
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { nodes, links, updatePhysics, isDragging, centerGraph, expandedCategories, regenerateGraph } = useGraphStore();
+  const {
+    nodes,
+    links,
+    updatePhysics,
+    isDragging,
+    centerGraph,
+    expandedCategories,
+    fetchGraphData,
+    rawCourses,
+    notes
+  } = useGraphStore();
   const { setCursorPosition } = useUIStore();
-  
+
+  // Load data on mount
+  useEffect(() => {
+    fetchGraphData();
+  }, [fetchGraphData]);
+
   // Фильтруем узлы: показываем курсы только если их категория раскрыта
   const visibleNodes = nodes.filter((node) => {
     if (node.type === 'center' || node.type === 'primary') {
@@ -23,13 +39,14 @@ export default function GraphCanvas() {
     }
     // Для курсов проверяем, раскрыта ли их категория
     if (node.type === 'sub') {
-      // Находим категорию этого курса
-      const categories = getCategories();
-      for (const category of categories) {
-        if (category.courses.some(c => c.id === node.id)) {
-          return expandedCategories.has(category.id);
-        }
+      // Find course and its category
+      const course = rawCourses.find(c => c.id === node.id);
+      if (course && course.category_id) {
+        return expandedCategories.has(course.category_id);
       }
+      // If no category (unlikely with current adapter), default to visible? 
+      // Or false. Let's say false to match behavior.
+      return false;
     }
     return false;
   });
@@ -44,11 +61,11 @@ export default function GraphCanvas() {
         // Используем реальные размеры контейнера
         const containerRect = containerRef.current.getBoundingClientRect();
         const svgRect = svgRef.current.getBoundingClientRect();
-        
+
         // Центр видимой области контейнера
         const centerX = containerRect.width / 2;
         const centerY = containerRect.height / 2;
-        
+
         setGraphCenter({ x: centerX, y: centerY });
 
         if (!engineRef.current) {
@@ -56,11 +73,11 @@ export default function GraphCanvas() {
         }
       }
     };
-    
+
     // Задержка для правильного расчета размеров после рендера
     const timer = setTimeout(updateCenter, 100);
     updateCenter();
-    
+
     window.addEventListener('resize', updateCenter);
     return () => {
       clearTimeout(timer);
@@ -108,11 +125,11 @@ export default function GraphCanvas() {
   const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
     if (!svgRef.current || !containerRef.current) return;
     const rect = svgRef.current.getBoundingClientRect();
-    
+
     // Координаты мыши относительно SVG (центр графа находится в graphCenter)
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
+
     setCursorPosition(x, y);
   };
 
@@ -132,9 +149,10 @@ export default function GraphCanvas() {
   return (
     <div
       ref={containerRef}
-      className="absolute inset-0 overflow-hidden flex items-center justify-center"
-      style={{ background: 'transparent' }}
+      className="absolute inset-0 overflow-hidden flex items-center justify-center bg-[#0a0a0a]"
     >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(16,185,129,0.05),transparent_60%)] pointer-events-none"></div>
+      <Toolbar />
       {/* Center Graph Button */}
       <motion.button
         onClick={centerGraph}
@@ -189,6 +207,16 @@ export default function GraphCanvas() {
           </g>
         </g>
       </motion.svg>
+
+      {/* Sticky Notes Layer */}
+      {notes.map((note) => (
+        <StickyNoteComponent
+          key={note.id}
+          note={note}
+          graphCenterX={graphCenter.x}
+          graphCenterY={graphCenter.y}
+        />
+      ))}
     </div>
   );
 }

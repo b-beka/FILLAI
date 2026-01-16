@@ -9,6 +9,16 @@ export interface Node {
   radius: number;
   color?: string;
   glowColor?: string;
+  marked?: boolean;
+  markColor?: string;
+}
+
+export interface StickyNote {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  color: string;
 }
 
 export interface Link {
@@ -24,6 +34,7 @@ export interface GraphState {
   selectedNodeId: string | null;
   isDragging: boolean;
   dragNodeId: string | null;
+  notes: StickyNote[];
 }
 
 export interface UIState {

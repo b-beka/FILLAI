@@ -21,12 +21,12 @@ interface MentorMessage {
   timestamp: Date;
 }
 
-export default function JasperMentor({ 
-  course, 
-  currentLesson, 
+export default function JasperMentor({
+  course,
+  currentLesson,
   currentModuleTitle,
-  isOpen, 
-  onToggle 
+  isOpen,
+  onToggle
 }: JasperMentorProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -77,8 +77,17 @@ export default function JasperMentor({
 
     try {
       // Формируем контекст для Джаспера
-      const lessonContext = currentLesson 
-        ? `Текущий урок: "${currentLesson.title}". Содержание урока: ${currentLesson.content.substring(0, 500)}...`
+      let contentText = '';
+      if (currentLesson) {
+        if (typeof currentLesson.content === 'string') {
+          contentText = currentLesson.content;
+        } else {
+          contentText = JSON.stringify(currentLesson.content);
+        }
+      }
+
+      const lessonContext = currentLesson
+        ? `Текущий урок: "${currentLesson.title}". Содержание урока: ${contentText.substring(0, 1000)}...`
         : '';
 
       const systemContext = `Ты Джаспер — дружелюбный и немного ироничный ментор по курсу "${course.title}". 
@@ -158,11 +167,10 @@ ${lessonContext}
       {/* Floating button */}
       <motion.button
         onClick={onToggle}
-        className={`fixed bottom-6 right-6 z-50 rounded-full shadow-xl px-6 py-5 flex items-center gap-3 transition-all ${
-          isOpen 
-            ? 'bg-sky-600 hover:bg-sky-500 text-white' 
+        className={`fixed bottom-6 right-6 z-50 rounded-full shadow-xl px-6 py-5 flex items-center gap-3 transition-all ${isOpen
+            ? 'bg-sky-600 hover:bg-sky-500 text-white'
             : 'bg-amber-600 hover:bg-amber-500 text-white'
-        }`}
+          }`}
         whileHover={{ scale: 1.1, y: -3 }}
         whileTap={{ scale: 0.95 }}
         title="Джаспер - ментор курса"
@@ -229,7 +237,7 @@ ${lessonContext}
                     <p>Задайте вопрос о текущем уроке, и я объясню простыми словами.</p>
                   </div>
                 )}
-                
+
                 {history.map((msg) => (
                   <motion.div
                     key={msg.id}
@@ -238,11 +246,10 @@ ${lessonContext}
                     className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
                   >
                     <div
-                      className={`max-w-[85%] px-3 py-2 rounded-2xl ${
-                        msg.role === 'user'
+                      className={`max-w-[85%] px-3 py-2 rounded-2xl ${msg.role === 'user'
                           ? 'bg-amber-600 text-white rounded-br-sm'
                           : 'bg-[#252525] text-gray-100 rounded-bl-sm border border-[#3a3a3a]'
-                      } text-xs leading-relaxed`}
+                        } text-xs leading-relaxed`}
                     >
                       {msg.content}
                     </div>

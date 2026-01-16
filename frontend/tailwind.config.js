@@ -8,13 +8,15 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        'dark-bg': '#050505',
-        'dark-surface': '#121212',
-        'dark-elevated': '#1f1f1f',
-        'accent-blue': '#3c3c3c',
-        'accent-purple': '#4a4a4a',
-        'glow-blue': 'rgba(60, 60, 60, 0.5)',
-        'glow-purple': 'rgba(80, 80, 80, 0.5)',
+        'dark-bg': '#0a0a0a',
+        'dark-surface': '#141414',
+        'dark-elevated': '#1e1e1e',
+        'accent-primary': '#10b981', // Emerald 500
+        'accent-secondary': '#0ea5e9', // Sky 500
+        'accent-error': '#ef4444',
+        'glow-primary': 'rgba(16, 185, 129, 0.4)',
+        'glow-secondary': 'rgba(14, 165, 233, 0.4)',
+        'grid-line': '#262626',
       },
       backdropBlur: {
         'glass': '20px',

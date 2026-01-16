@@ -1,8 +1,85 @@
+import { useUIStore } from '@/store/uiStore';
+import { refreshToken as refreshAuthToken, logout as apiLogout } from './authApi';
+
 /**
  * API сервис для работы с бэкендом
  */
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
+async function request<T>(endpoint: string, options: RequestInit = {}, retryCount = 0): Promise<T> {
+  const url = endpoint.startsWith('http') ? endpoint : `${API_BASE_URL}${endpoint}`;
+  const token = localStorage.getItem('access_token');
+
+  const headers = {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...options.headers,
+  };
+
+  const response = await fetch(url, {
+    ...options,
+    headers,
+  });
+
+  // Handle 401 Unauthorized - try to refresh token
+  if (response.status === 401 && retryCount === 0) {
+    const refreshTokenValue = localStorage.getItem('refresh_token');
+
+    if (refreshTokenValue) {
+      try {
+        console.log('🔄 Access token expired, refreshing...');
+        const tokens = await refreshAuthToken(refreshTokenValue);
+        localStorage.setItem('access_token', tokens.access_token);
+        localStorage.setItem('refresh_token', tokens.refresh_token);
+
+        console.log('✅ Token refreshed successfully, retrying request...');
+        // Retry the original request with new token
+        return request<T>(endpoint, options, retryCount + 1);
+      } catch (refreshError) {
+        console.error('❌ Token refresh failed, logging out:', refreshError);
+        // Refresh failed, logout user
+        apiLogout();
+        if (typeof window !== 'undefined') {
+          window.location.href = '/';
+        }
+        throw new Error('Сессия истекла. Пожалуйста, войдите снова.');
+      }
+    } else {
+      // No refresh token available
+      console.warn('⚠️ No refresh token available');
+      apiLogout();
+      if (typeof window !== 'undefined') {
+        window.location.href = '/';
+      }
+      throw new Error('Сессия истекла. Пожалуйста, войдите снова.');
+    }
+  }
+
+  if (response.status === 403) {
+    // Check if it's a limit error (server should send specific detail, but we assume 403 is likely limit or auth)
+    const data = await response.clone().json().catch(() => ({}));
+    if (data.detail && data.detail.includes('limit reached')) {
+      useUIStore.getState().setSubscriptionModalOpen(true);
+    } else if (data.detail === "Free tier limit reached. Please upgrade to Premium.") {
+      useUIStore.getState().setSubscriptionModalOpen(true);
+    }
+  }
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(errorData.error || errorData.detail || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+export const api = {
+  get: <T>(endpoint: string) => request<T>(endpoint, { method: 'GET' }),
+  post: <T>(endpoint: string, body: any) => request<T>(endpoint, { method: 'POST', body: JSON.stringify(body) }),
+  put: <T>(endpoint: string, body: any) => request<T>(endpoint, { method: 'PUT', body: JSON.stringify(body) }),
+  delete: <T>(endpoint: string) => request<T>(endpoint, { method: 'DELETE' }),
+};
 
 export interface CourseSettings {
   title: string;
@@ -56,10 +133,30 @@ export interface BackendLesson {
   additional_materials: BackendAdditionalMaterial[];
 }
 
+
+export type HallucinationRisk = 'low' | 'medium' | 'high';
+
+export interface CoursePassport {
+  target_result: string;
+  thinking_level: string;
+  limitations: string;
+  depth_score: number;
+  hallucination_risk: HallucinationRisk;
+}
+
+export type ModuleLayerType = 'meaning' | 'core' | 'simulation' | 'practice' | 'control';
+
+export interface ModuleLayer {
+  type: ModuleLayerType;
+  title: string;
+  content: any;
+}
+
 export interface BackendModule {
   title: string;
   description: string;
   lessons: BackendLesson[];
+  layers?: ModuleLayer[];
   duration_hours: number;
 }
 
@@ -72,6 +169,7 @@ export interface BackendCourse {
   modules: BackendModule[];
   total_duration_hours: number;
   learning_objectives: string[];
+  passport?: CoursePassport;
 }
 
 export interface CourseStructureLesson {
@@ -187,6 +285,33 @@ export interface ModuleTestResponse {
   error?: string;
 }
 
+// ===== Clarifying Questions for Course Wizard =====
+
+export interface ClarifyingQuestion {
+  id: string;
+  question: string;
+  type: 'text' | 'choice' | 'scale';
+  options?: string[];  // For choice type
+  placeholder?: string; // For text type
+  required: boolean;
+}
+
+export interface QuestionAnswer {
+  questionId: string;
+  answer: string | number;
+}
+
+export interface ClarifyingQuestionsRequest {
+  topic: string;
+  target_audience?: string;
+}
+
+export interface ClarifyingQuestionsResponse {
+  success: boolean;
+  questions?: ClarifyingQuestion[];
+  error?: string;
+}
+
 /**
  * Преобразует настройки фронтенда в формат бэкенда
  */
@@ -261,7 +386,7 @@ export function transformBackendCourseToFrontend(
       const exercisesText = lesson.exercises.length > 0
         ? `\n\nПрактические упражнения:\n${lesson.exercises.map((ex, idx) => `${idx + 1}. ${ex}`).join('\n')}`
         : '';
-      
+
       return {
         id: crypto.randomUUID(),
         title: lesson.title,
@@ -316,25 +441,12 @@ export async function generateCourse(
   try {
     const backendSettings = transformFrontendSettingsToBackend(topic, frontendSettings);
     const structurePayload = sanitizeStructureForBackend(structureOverride);
-    
-    const response = await fetch(`${API_BASE_URL}/api/courses/generate`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        settings: backendSettings,
-        structure_override: structurePayload,
-        reference_files: backendSettings.reference_files,
-      }),
+
+    const data = await api.post<CourseGenerationResponse>('/api/courses/generate', {
+      settings: backendSettings,
+      structure_override: structurePayload,
+      reference_files: backendSettings.reference_files,
     });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-    }
-
-    const data: CourseGenerationResponse = await response.json();
 
     if (!data.success || !data.course) {
       throw new Error(data.error || 'Failed to generate course');
@@ -448,3 +560,33 @@ export async function checkApiHealth(): Promise<boolean> {
   }
 }
 
+/**
+ * Генерирует уточняющие вопросы для создания курса
+ */
+export async function generateClarifyingQuestions(
+  topic: string,
+  targetAudience?: string
+): Promise<ClarifyingQuestion[]> {
+  const payload: ClarifyingQuestionsRequest = {
+    topic,
+    target_audience: targetAudience,
+  };
+
+  const response = await fetch(`${API_BASE_URL}/api/courses/generate-questions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Ошибка генерации вопросов: ${response.status}`);
+  }
+
+  const data: ClarifyingQuestionsResponse = await response.json();
+
+  if (!data.success || !data.questions) {
+    throw new Error(data.error || 'Не удалось сгенерировать вопросы');
+  }
+
+  return data.questions;
+}

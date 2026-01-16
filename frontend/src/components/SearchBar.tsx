@@ -3,8 +3,8 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect, useRef } from 'react';
 import { Sparkles } from 'lucide-react';
-import CourseSettingsModal from './CourseSettingsModal';
-import { generateMockCourse, addCourseFromAPI } from '@/data/mockStore';
+import { useUIStore } from '@/store/uiStore';
+// Removed mockStore imports - using API directly
 import { useGraphStore } from '@/store/graphStore';
 import {
   generateCourse,
@@ -22,7 +22,6 @@ export default function SearchBar() {
 
   const [isFocused, setIsFocused] = useState(false);
   const [topic, setTopic] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [apiAvailable, setApiAvailable] = useState(false);
@@ -41,47 +40,18 @@ export default function SearchBar() {
     checkApiHealth().then(setApiAvailable);
   }, []);
 
+  /* Redirect to Chat Interface */
+  const { setCurrentPage } = useUIStore(); // Need to import this hook
+
   const handleTopicSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (topic.trim()) {
-      setIsModalOpen(true);
-      setError(null);
+      setCurrentPage('chat');
+      // Optionally pass the topic to chat? For now just redirect.
     }
   };
 
-  const handleGenerateCourse = async (settings: any) => {
-    setSettingsDraft(settings);
-    setIsModalOpen(false);
-    setIsPreviewing(true);
-    startLogSession('preview');
-    setError(null);
-
-    try {
-      let structure: CourseStructurePlan | null = null;
-
-      if (apiAvailable) {
-        try {
-          structure = await previewCourseStructure(topic, settings);
-        } catch (apiError: any) {
-          console.error('API structure preview error, fallback to локальный черновик:', apiError);
-          setError('Не удалось получить структуру от API, используем черновик');
-        }
-      }
-
-      if (!structure) {
-        structure = buildFallbackStructure(topic);
-      }
-
-      setStructureDraft(applyIds(structure));
-      setStructureModalOpen(true);
-    } catch (err: any) {
-      console.error('Error preparing structure:', err);
-      setError(err.message || 'Ошибка при подготовке структуры курса');
-    } finally {
-      setIsPreviewing(false);
-      stopLogSession();
-    }
-  };
+  // handleGenerateCourse removed as it was part of the legacy modal flow
 
   const buildFallbackStructure = (courseTopic: string): CourseStructurePlan => ({
     modules: [
@@ -127,14 +97,16 @@ export default function SearchBar() {
       if (apiAvailable) {
         try {
           course = await generateCourse(topic, settingsDraft, plan);
-          addCourseFromAPI(course);
+          // Course is automatically saved to database by backend
+          // Regenerate graph to show new course
         } catch (apiError: any) {
-          console.error('API error, falling back to локальный режим:', apiError);
-          setError('API недоступен, курс собран локально');
-          course = addCourseFromAPI(buildLocalCourse(plan));
+          console.error('API error:', apiError);
+          setError('Ошибка при генерации курса. Проверьте подключение к API.');
+          throw apiError; // Don't fallback to local - require API
         }
       } else {
-        course = addCourseFromAPI(buildLocalCourse(plan));
+        setError('API недоступен. Пожалуйста, проверьте подключение к серверу.');
+        throw new Error('API недоступен');
       }
 
       setTopic('');
@@ -150,31 +122,7 @@ export default function SearchBar() {
     }
   };
 
-  const buildLocalCourse = (plan: CourseStructurePlan) => ({
-    id: crypto.randomUUID(),
-    title: `Курс по теме: ${topic}`,
-    description: settingsDraft?.preferences || settingsDraft?.goal || `Курс по теме "${topic}"`,
-    category: (settingsDraft?.customCategory || settingsDraft?.category || 'Без категории')
-      .toLowerCase()
-      .replace(/\s+/g, '-'),
-    format: settingsDraft?.format || 'Смешанный',
-    level: settingsDraft?.level || 'Средний',
-    duration: settingsDraft?.duration || '4 недели',
-    intensity: settingsDraft?.intensity || 'Средняя',
-    goal: settingsDraft?.goal || '',
-    createdAt: new Date().toISOString(),
-    modules: plan.modules.map((mod) => ({
-      id: crypto.randomUUID(),
-      title: mod.title,
-      description: mod.description,
-      lessons: mod.lessons.map((lesson) => ({
-        id: crypto.randomUUID(),
-        title: lesson.title,
-        content: lesson.content || '',
-        duration_minutes: lesson.duration_minutes || 30,
-      })),
-    })),
-  });
+  // Removed buildLocalCourse - using API only
 
   const previewMessages = [
     'Получаем черновик структуры…',
@@ -248,7 +196,7 @@ export default function SearchBar() {
               opacity: isFocused ? 1 : 0.6,
             }}
           >
-          {isGenerating || isPreviewing ? (
+            {isGenerating || isPreviewing ? (
               <motion.div
                 animate={{ rotate: 360 }}
                 transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
@@ -281,13 +229,6 @@ export default function SearchBar() {
         )}
       </div>
 
-      <CourseSettingsModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onSubmit={handleGenerateCourse}
-        topic={topic}
-      />
-
       <CourseStructureEditorModal
         isOpen={structureModalOpen}
         topic={topic}
@@ -295,7 +236,7 @@ export default function SearchBar() {
         onChange={setStructureDraft}
         onBackToSettings={() => {
           setStructureModalOpen(false);
-          setIsModalOpen(true);
+          setCurrentPage('chat'); // Redirect to chat instead of modal
         }}
         onClose={() => setStructureModalOpen(false)}
         onGenerate={(plan) => handleGenerateFromStructure(plan)}

@@ -8,6 +8,13 @@ try:
 except ImportError:
     # Fallback если библиотека не установлена
     VideosSearch = None
+
+try:
+    from duckduckgo_search import DDGS
+except ImportError:
+    print("duckduckgo-search not installed")
+    DDGS = None
+
 import json
 
 def normalize_text(value):
@@ -39,14 +46,20 @@ class MaterialSearchAgent:
 
 Для урока по теме "{lesson_title}" в курсе "{course_title}" (уровень: {difficulty}, аудитория: {target_audience}) создай оптимальные поисковые запросы для YouTube и других источников.
 
-Создай 2-3 поисковых запроса для YouTube видео, которые будут максимально релевантны теме урока.
+Создай 3 очень конкретных поисковых запроса для YouTube, чтобы найти обучающие видео именно по этой теме. 
+Исключи развлекательный контент, новости или видео не по теме (например, если тема "История России", не должно быть "История Банка России" или "История игрушек").
+Добавь слова "лекция", "урок", "образовательное видео", "документальный фильм".
 
 Верни ТОЛЬКО валидный JSON:
 {{
     "youtube_queries": [
-        "поисковый запрос 1",
-        "поисковый запрос 2",
-        "поисковый запрос 3"
+        "строгий поисковый запрос 1",
+        "строгий поисковый запрос 2",
+        "строгий поисковый запрос 3"
+    ],
+    "image_queries": [
+        "описание картинки для поиска 1",
+        "описание картинки для поиска 2"
     ],
     "material_suggestions": [
         {{
@@ -102,65 +115,105 @@ class MaterialSearchAgent:
                 ],
                 "material_suggestions": []
             }
-    
-    def search_youtube_videos(self, query: str, max_results: int = 3) -> List[Dict[str, Any]]:
-        """Ищет видео на YouTube"""
-        if VideosSearch is None:
-            print("youtube-search-python не установлен, пропускаем поиск видео")
-            return []
+    async def search_youtube_videos(self, queries: List[str], max_results: int = 3) -> List[Dict[str, Any]]:
+        """Ищет видео на YouTube по списку запросов"""
+        unique_videos = {}
         
-        try:
-            videos_search = VideosSearch(query, limit=max_results)
-            results = videos_search.result()
-            
-            videos = []
-            for video in results.get("result", []):
-                videos.append({
-                    "title": normalize_text(video.get("title")),
-                    "url": video.get("link", ""),
-                    "description": normalize_text(video.get("descriptionSnippet")),
-                    "duration": normalize_text(video.get("duration")),
-                    "channel": normalize_text(video.get("channel", {}).get("name") if video.get("channel") else None)
-                })
-            
-            return videos
-        except Exception as e:
-            print(f"Ошибка поиска YouTube видео: {e}")
+        if VideosSearch is None:
+            print("Библиотека youtubesearchpython не установлена")
             return []
-    
-    async def find_materials_for_lesson(
-        self,
-        lesson_title: str,
-        course_title: str,
-        difficulty: str,
-        target_audience: str,
-        lesson_summary: str
-    ) -> Dict[str, Any]:
-        """Находит материалы для урока"""
-        # Генерируем поисковые запросы
-        queries_data = await self.generate_search_queries(
-            lesson_title, course_title, difficulty, target_audience, lesson_summary
+
+        for query in queries:
+            try:
+                # Добавляем "tutorial" или "education" для улучшения качества
+                search = VideosSearch(query, limit=2)
+                results = search.result()
+                
+                if not results or 'result' not in results:
+                    continue
+
+                for video in results['result']:
+                    video_id = video.get('id')
+                    if not video_id:
+                        continue
+                        
+                    # Basic filtering for irrelevant content
+                    title_lower = video.get('title', '').lower()
+                    if any(x in title_lower for x in ['gameplay', 'trailer', 'song', 'music video', 'cover', 'реакция', 'reaction']):
+                        continue
+                        
+                    if video_id not in unique_videos:
+                        unique_videos[video_id] = {
+                            "title": video.get('title'),
+                            "url": video.get('link'),
+                            "thumbnail": video.get('thumbnails', [{}])[0].get('url'),
+                            "duration": video.get('duration'),
+                            "views": video.get('viewCount', {}).get('short')
+                        }
+            except Exception as e:
+                print(f"Ошибка поиска YouTube для запроса '{query}': {e}")
+                continue
+                
+        return list(unique_videos.values())[:max_results]
+
+    async def search_images(self, query: str, max_results: int = 3) -> List[str]:
+        """Ищет изображения через DuckDuckGo"""
+        try:
+            from duckduckgo_search import DDGS
+            
+            results = []
+            with DDGS() as ddgs:
+                # keywords to ensure educational/diagram content
+                enhanced_query = f"{query} educational diagram schema or photo"
+                ddgs_gen = ddgs.images(
+                    enhanced_query,
+                    region="wt-wt",
+                    safesearch="on",
+                    size=None,
+                    color=None,
+                    type_image=None,
+                    layout=None,
+                    license_image=None,
+                )
+                
+                # Take first N results
+                for i, r in enumerate(ddgs_gen):
+                    if i >= max_results:
+                        break
+                    if r.get('image'):
+                        results.append(r['image'])
+                        
+            return results
+        except ImportError:
+            print("duckduckgo-search not installed")
+            return []
+        except Exception as e:
+            print(f"Error searching images: {e}")
+            return []    
+
+    async def find_materials_for_lesson(self, lesson_title: str, course_title: str, difficulty: str = "intermediate", target_audience: str = "student", lesson_summary: str = "") -> Dict[str, Any]:
+        """Находит видео и изображения для урока"""
+        # 1. Генерируем запросы
+        search_plan = await self.generate_search_queries(
+            lesson_title, 
+            course_title, 
+            difficulty,
+            target_audience,
+            lesson_summary
         )
         
-        # Ищем видео на YouTube
-        all_videos = []
-        for query in queries_data.get("youtube_queries", [])[:2]:  # Берем первые 2 запроса
-            videos = self.search_youtube_videos(query, max_results=2)
-            all_videos.extend(videos)
+        # 2. Ищем видео
+        youtube_queries = search_plan.get("youtube_queries", [f"{lesson_title} {course_title}"])
+        videos = await self.search_youtube_videos(youtube_queries)
         
-        # Убираем дубликаты по URL
-        seen_urls = set()
-        unique_videos = []
-        for video in all_videos:
-            if video.get("url") and video["url"] not in seen_urls:
-                seen_urls.add(video["url"])
-                unique_videos.append(video)
-        
-        # Ограничиваем до 3 лучших видео
-        unique_videos = unique_videos[:3]
+        # 3. Ищем изображения (используем лучший запрос или название урока)
+        # Choose the most specific query or just lesson title
+        image_query = youtube_queries[0] if youtube_queries else f"{lesson_title} {course_title}"
+        images = await self.search_images(image_query, max_results=3)
         
         return {
-            "videos": unique_videos,
-            "additional_materials": queries_data.get("material_suggestions", [])
+            "videos": videos,
+            "images": images,
+            "suggestions": search_plan.get("material_suggestions", [])
         }
 

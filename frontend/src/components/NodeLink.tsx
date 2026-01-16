@@ -20,7 +20,7 @@ export default function NodeLink({
   graphCenterY,
 }: NodeLinkProps) {
   const [isHovered, setIsHovered] = useState(false);
-  
+
   const sourceX = sourceNode.x + graphCenterX;
   const sourceY = sourceNode.y + graphCenterY;
   const targetX = targetNode.x + graphCenterX;
@@ -30,7 +30,7 @@ export default function NodeLink({
   const dx = targetX - sourceX;
   const dy = targetY - sourceY;
   const distance = Math.sqrt(dx * dx + dy * dy);
-  
+
   // Используем hash от link.id для детерминированного выбора кривизны
   const linkHash = link.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
   const isCurved = linkHash % 10 < 4; // 40% линий будут кривыми
@@ -41,19 +41,19 @@ export default function NodeLink({
   const midY = (sourceY + targetY) / 2 + perpY;
 
   // Определяем тип связи для разных цветов
-  const linkType = sourceNode.type === 'center' ? 'center' : 
-                   sourceNode.type === 'primary' ? 'category' : 'course';
-  
+  const linkType = sourceNode.type === 'center' ? 'center' :
+    sourceNode.type === 'primary' ? 'category' : 'course';
+
   const linkColors = {
     center: { stroke: 'rgba(120, 174, 255, 0.6)', glow: 'rgba(120, 174, 255, 0.3)' },
-    category: { stroke: 'rgba(144, 238, 144, 0.5)', glow: 'rgba(144, 238, 144, 0.2)' },
-    course: { stroke: 'rgba(255, 200, 100, 0.4)', glow: 'rgba(255, 200, 100, 0.15)' },
+    category: { stroke: 'rgba(16, 185, 129, 0.5)', glow: 'rgba(16, 185, 129, 0.2)' }, // Emerald
+    course: { stroke: 'rgba(14, 165, 233, 0.4)', glow: 'rgba(14, 165, 233, 0.15)' }, // Sky
   };
-  
+
   const colors = linkColors[linkType];
 
   // Если кривая - используем квадратичную кривую, иначе прямую линию
-  const pathData = isCurved 
+  const pathData = isCurved
     ? `M ${sourceX} ${sourceY} Q ${midX} ${midY} ${targetX} ${targetY}`
     : `M ${sourceX} ${sourceY} L ${targetX} ${targetY}`;
 
@@ -88,8 +88,8 @@ export default function NodeLink({
         }}
         transition={{ duration: 0.2 }}
         style={{
-          filter: isHovered 
-            ? `drop-shadow(0 0 4px ${colors.glow})` 
+          filter: isHovered
+            ? `drop-shadow(0 0 4px ${colors.glow})`
             : 'drop-shadow(0 0 1px rgba(255, 255, 255, 0.2))',
           cursor: 'pointer',
         }}

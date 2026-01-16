@@ -1,10 +1,21 @@
 import { create } from 'zustand';
-import { GraphState, Node, Link } from '@/types/graph';
-import { initialNodes, initialLinks, generateNodes, generateLinks } from '@/lib/graphData';
+import { GraphState, Node, Link, StickyNote } from '@/types/graph';
 import { PhysicsEngine } from '@/lib/physicsEngine';
-import { getCategories } from '@/data/mockStore';
+import { coursesApi, categoriesApi, ApiCourse, ApiCategory } from '@/services/apiClient';
+import { adaptApiDataToGraph } from '@/services/graphAdapter';
 
 interface GraphStore extends GraphState {
+  // Data
+  nodes: Node[];
+  links: Link[];
+  rawCourses: ApiCourse[];
+  rawCategories: ApiCategory[];
+  notes: StickyNote[];
+  isLoading: boolean;
+  error: string | null;
+
+  // Actions
+  fetchGraphData: () => Promise<void>;
   setNodes: (nodes: Node[]) => void;
   setLinks: (links: Link[]) => void;
   updateNode: (id: string, updates: Partial<Node>) => void;
@@ -18,61 +29,65 @@ interface GraphStore extends GraphState {
   regenerateGraph: () => void;
   centerGraph: () => void;
   saveNodePositions: () => void;
-  loadNodePositions: () => void;
+  loadNodePositions: () => Record<string, { x: number; y: number }>;
+  loadNotes: () => StickyNote[]; // Internal helper exposed if needed
   expandedCategories: Set<string>;
   toggleCategory: (categoryId: string) => void;
   isCategoryExpanded: (categoryId: string) => boolean;
+  toggleNodeMark: (nodeId: string, color?: string) => void;
+  addNote: (note: StickyNote) => void;
+  updateNote: (id: string, updates: Partial<StickyNote>) => void;
+  deleteNote: (id: string) => void;
+  isHeatmapMode: boolean;
+  toggleHeatmapMode: () => void;
 }
 
-// Загружаем сохраненные позиции и переименования при инициализации
-const loadInitialNodes = (): Node[] => {
-  if (typeof window === 'undefined') return initialNodes;
-  try {
-    let nodes = [...initialNodes];
-    
-    // Загружаем позиции
-    const savedPositions = localStorage.getItem('graph_node_positions');
-    if (savedPositions) {
-      const positions = JSON.parse(savedPositions) as Record<string, { x: number; y: number }>;
-      nodes = nodes.map(node => {
-        if (node.type === 'center') return node;
-        const savedPos = positions[node.id];
-        if (savedPos) {
-          return { ...node, x: savedPos.x, y: savedPos.y };
-        }
-        return node;
-      });
-    }
-    
-    // Загружаем переименования
-    const savedRenames = localStorage.getItem('graph_node_renames');
-    if (savedRenames) {
-      const renames = JSON.parse(savedRenames) as Record<string, string>;
-      nodes = nodes.map(node => {
-        if (renames[node.id]) {
-          return { ...node, label: renames[node.id] };
-        }
-        return node;
-      });
-    }
-    
-    return nodes;
-  } catch (error) {
-    console.error('Ошибка загрузки данных графа:', error);
-  }
-  return initialNodes;
-};
-
 export const useGraphStore = create<GraphStore>((set, get) => ({
-  nodes: loadInitialNodes(),
-  links: initialLinks,
+  nodes: [],
+  links: [],
+  rawCourses: [],
+  rawCategories: [],
+  notes: [],
+  isLoading: false,
+  error: null,
   selectedNodeId: null,
   isDragging: false,
   dragNodeId: null,
-  expandedCategories: new Set<string>(), // По умолчанию все категории свернуты
+  expandedCategories: new Set<string>(),
+
+  fetchGraphData: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const [courses, categories, myCourses, enrolledCourses] = await Promise.all([
+        coursesApi.list(),
+        categoriesApi.list(),
+        coursesApi.getMyCourses().catch(() => []),
+        coursesApi.getEnrolledCourses().catch(() => [])
+      ]);
+
+      // Merge unique courses
+      const allCoursesMap = new Map();
+      [...courses, ...myCourses, ...enrolledCourses].forEach(c => {
+        allCoursesMap.set(c.id, c);
+      });
+      const uniqueCourses = Array.from(allCoursesMap.values());
+
+      set({ rawCourses: uniqueCourses, rawCategories: categories });
+
+      // Auto-expand all categories by default so courses are visible
+      const allCategoryIds = new Set(categories.map(c => c.id));
+      set({ expandedCategories: allCategoryIds });
+
+      get().regenerateGraph();
+    } catch (err: any) {
+      console.error("Failed to fetch graph data:", err);
+      set({ error: err.message || 'Failed to load graph data' });
+    } finally {
+      set({ isLoading: false });
+    }
+  },
 
   setNodes: (nodes) => set({ nodes }),
-
   setLinks: (links) => set({ links }),
 
   updateNode: (id, updates) =>
@@ -80,21 +95,8 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       const newNodes = state.nodes.map((node) =>
         node.id === id ? { ...node, ...updates } : node
       );
-      // Автоматически сохраняем позиции при изменении
       if (updates.x !== undefined || updates.y !== undefined) {
-        if (typeof window !== 'undefined') {
-          try {
-            const positions: Record<string, { x: number; y: number }> = {};
-            newNodes.forEach(node => {
-              if (node.type !== 'center') {
-                positions[node.id] = { x: node.x, y: node.y };
-              }
-            });
-            localStorage.setItem('graph_node_positions', JSON.stringify(positions));
-          } catch (error) {
-            console.error('Ошибка сохранения позиций:', error);
-          }
-        }
+        get().saveNodePositions();
       }
       return { nodes: newNodes };
     }),
@@ -104,52 +106,51 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       const newNodes = state.nodes.map((node) =>
         node.id === id ? { ...node, label: newLabel } : node
       );
-      // Сохраняем переименования в localStorage
-      if (typeof window !== 'undefined') {
-        try {
-          const renames: Record<string, string> = {};
-          newNodes.forEach(node => {
-            if (node.type !== 'center') {
-              // Проверяем, отличается ли название от исходного
-              const categories = getCategories();
-              const allCourses = categories.flatMap(cat => cat.courses);
-              const originalCourse = allCourses.find(c => c.id === node.id);
-              const originalCategory = categories.find(cat => cat.id === node.id);
-              const originalLabel = originalCourse?.title || originalCategory?.label;
-              if (originalLabel && node.label !== originalLabel) {
-                renames[node.id] = node.label;
-              }
-            }
-          });
-          localStorage.setItem('graph_node_renames', JSON.stringify(renames));
-        } catch (error) {
-          console.error('Ошибка сохранения переименований:', error);
-        }
-      }
+      // Logic for saving renames can be re-added here if backend supports it
       return { nodes: newNodes };
     }),
 
   selectNode: (id) => set({ selectedNodeId: id }),
-
   startDrag: (id) => set({ isDragging: true, dragNodeId: id }),
-
   stopDrag: () => set({ isDragging: false, dragNodeId: null }),
 
-  // Статичный иерархический граф: отключаем физический движок,
-  // позиции берутся из заранее рассчитанных координат в graphData.ts
-  updatePhysics: () => {
-    // Можно оставить на будущее, если понадобится анимация
-    return;
+  updatePhysics: (engine, cursorX, cursorY) => {
+    // Determine if we should apply forces. 
+    // If not dragging, and we have an engine, update it.
+    // The engine update logic usually modifies node positions in place (if they are objects ref), 
+    // but Zustand needs immutable updates to trigger re-renders. 
+    // However, for high-frequency physics, we often mutate refs and only sync to state occasionally 
+    // OR we put physics in a ref and sync.
+    // The existing implementation seemed to pass engine around.
+
+    // For now, keep it simple stub or similar to previous if generic.
+    // Previous implementation called engine.update() and seemed to rely on GraphCanvas animation loop to re-read nodes? 
+    // Actually GraphStore `updatePhysics` implementation was:
+    // set((state) => { engine.update(...); return { nodes: [...engine.nodes] } }) ?
+    // The previous implementation was:
+    /*
+      updatePhysics: (engine, cursorX, cursorY) => {
+         // ... implementation details weren't fully shown in my view_code but hinted ...
+         // Wait, the previous view_code for graphStore.ts had `updatePhysics: () => { return; }` // Disabled!
+      }
+    */
+    // So I will keep it disabled or minimal for now until "Constructor Mode" needs it.
   },
 
-  resetGraph: () => set({ nodes: initialNodes, links: initialLinks, expandedCategories: new Set() }),
+  resetGraph: () => set({ nodes: [], links: [], expandedCategories: new Set() }),
 
   regenerateGraph: () => {
     const state = get();
-    const newNodes = generateNodes();
-    // Загружаем сохраненные позиции
+    // Use adapter
+    const { nodes, links } = adaptApiDataToGraph(state.rawCourses, state.rawCategories, state.expandedCategories);
+
+    // Load positions
     const savedPositions = get().loadNodePositions();
-    const nodesWithPositions = newNodes.map(node => {
+    const savedNotes = get().loadNotes();
+    if (savedNotes) {
+      set({ notes: savedNotes });
+    }
+    const nodesWithPositions = nodes.map(node => {
       if (node.type === 'center') return node;
       const saved = savedPositions[node.id];
       if (saved) {
@@ -157,8 +158,15 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       }
       return node;
     });
-    const newLinks = generateLinks(nodesWithPositions, state.expandedCategories);
-    set({ nodes: nodesWithPositions, links: newLinks });
+
+    set({ nodes: nodesWithPositions, links });
+  },
+
+  centerGraph: () => {
+    // Re-run generation but keep positions (or reset? "Center" usually implies reset view or pan. 
+    // Previous impl reset positions to calculated ones EXCEPT saved ones? Setup was complex.
+    // Simple version: just regenerate.
+    get().regenerateGraph();
   },
 
   saveNodePositions: () => {
@@ -171,9 +179,11 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
           positions[node.id] = { x: node.x, y: node.y };
         }
       });
+      const notes = state.notes;
       localStorage.setItem('graph_node_positions', JSON.stringify(positions));
+      localStorage.setItem('graph_notes', JSON.stringify(notes));
     } catch (error) {
-      console.error('Ошибка сохранения позиций:', error);
+      console.error('Error saving positions:', error);
     }
   },
 
@@ -185,26 +195,22 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
         return JSON.parse(saved) as Record<string, { x: number; y: number }>;
       }
     } catch (error) {
-      console.error('Ошибка загрузки позиций:', error);
+      console.error('Error loading positions:', error);
     }
     return {};
   },
 
-  centerGraph: () => {
-    const state = get();
-    // Регенерируем граф для пересчета позиций, но сохраняем пользовательские позиции
-    const regeneratedNodes = generateNodes();
-    const savedPositions = get().loadNodePositions();
-    const nodesWithPositions = regeneratedNodes.map(node => {
-      if (node.type === 'center') return node;
-      const saved = savedPositions[node.id];
+  loadNotes: () => {
+    if (typeof window === 'undefined') return [];
+    try {
+      const saved = localStorage.getItem('graph_notes');
       if (saved) {
-        return { ...node, x: saved.x, y: saved.y };
+        return JSON.parse(saved) as StickyNote[];
       }
-      return node;
-    });
-    const regeneratedLinks = generateLinks(nodesWithPositions, state.expandedCategories);
-    set({ nodes: nodesWithPositions, links: regeneratedLinks });
+    } catch (error) {
+      console.error('Error loading notes:', error);
+    }
+    return [];
   },
 
   toggleCategory: (categoryId: string) => {
@@ -215,16 +221,46 @@ export const useGraphStore = create<GraphStore>((set, get) => ({
       } else {
         newExpanded.add(categoryId);
       }
-      // Регенерируем связи с учетом нового состояния раскрытия
-      const newLinks = generateLinks(state.nodes, newExpanded);
-      return { expandedCategories: newExpanded, links: newLinks };
+      return { expandedCategories: newExpanded };
     });
+    // Valid to call get() here? Yes.
+    get().regenerateGraph();
   },
 
   isCategoryExpanded: (categoryId: string) => {
     return get().expandedCategories.has(categoryId);
   },
 
-  getNodes: () => get().nodes,
-}));
+  toggleNodeMark: (nodeId, color) => {
+    set((state) => {
+      const newNodes = state.nodes.map((node) => {
+        if (node.id === nodeId) {
+          // If already marked with same color, unmark. If different color/not marked, mark.
+          const isSameColor = node.marked && node.markColor === color;
+          return {
+            ...node,
+            marked: !isSameColor,
+            markColor: isSameColor ? undefined : color
+          };
+        }
+        return node;
+      });
+      return { nodes: newNodes };
+    });
+  },
 
+  getNodes: () => get().nodes,
+
+  addNote: (note) => set((state) => ({ notes: [...state.notes, note] })),
+
+  updateNote: (id, updates) => set((state) => ({
+    notes: state.notes.map(n => n.id === id ? { ...n, ...updates } : n)
+  })),
+
+  deleteNote: (id) => set((state) => ({
+    notes: state.notes.filter(n => n.id !== id)
+  })),
+
+  isHeatmapMode: false,
+  toggleHeatmapMode: () => set((state) => ({ isHeatmapMode: !state.isHeatmapMode })),
+}));

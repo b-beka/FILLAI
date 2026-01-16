@@ -2,6 +2,13 @@
 
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { SubscriptionModal } from '@/components/SubscriptionModal';
+
+// Initialize Sentry on client side (only if DSN is provided)
+if (typeof window !== 'undefined' && process.env.NEXT_PUBLIC_SENTRY_DSN) {
+  // Sentry is initialized via sentry.client.config.ts
+  // This is just a placeholder for any runtime initialization if needed
+}
 
 export default function RootLayout({
   children,
@@ -17,6 +24,7 @@ export default function RootLayout({
       <body>
         <AuthProvider>
           {children}
+          <SubscriptionModal />
         </AuthProvider>
       </body>
     </html>

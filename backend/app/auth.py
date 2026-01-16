@@ -58,8 +58,37 @@ def create_refresh_token(data: dict) -> str:
     return encoded_jwt
 
 
+def create_verification_token(user_id: str) -> str:
+    """Create email verification token (valid for 24 hours)"""
+    to_encode = {"sub": user_id, "type": "verification"}
+    expire = datetime.utcnow() + timedelta(hours=24)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+def create_password_reset_token(user_id: str) -> str:
+    """Create password reset token (valid for 1 hour)"""
+    to_encode = {"sub": user_id, "type": "password_reset"}
+    expire = datetime.utcnow() + timedelta(hours=1)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+
+def verify_verification_token(token: str) -> TokenData:
+    """Verify email verification token"""
+    return verify_token(token, "verification")
+
+
+def verify_password_reset_token(token: str) -> TokenData:
+    """Verify password reset token"""
+    return verify_token(token, "password_reset")
+
+
 def verify_token(token: str, token_type: str = "access") -> TokenData:
     """Verify and decode JWT token"""
+    from uuid import UUID
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -67,16 +96,23 @@ def verify_token(token: str, token_type: str = "access") -> TokenData:
     )
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        user_id: str = payload.get("sub")
+        user_id_str: str = payload.get("sub")
         token_type_check: str = payload.get("type")
         
-        if user_id is None:
+        if user_id_str is None:
             raise credentials_exception
         if token_type_check != token_type:
             raise credentials_exception
+        
+        # Convert string to UUID
+        try:
+            user_id = UUID(user_id_str)
+        except (ValueError, TypeError):
+            raise credentials_exception
             
         token_data = TokenData(user_id=user_id)
-    except JWTError:
+    except JWTError as e:
+        print(f"DEBUG AUTH: JWT Error: {str(e)}")
         raise credentials_exception
     return token_data
 
@@ -87,8 +123,10 @@ async def get_current_user(
 ) -> User:
     """Get current authenticated user"""
     token_data = verify_token(token, "access")
+    # print(f"DEBUG AUTH: User ID from token: {token_data.user_id}")
     user = db.query(User).filter(User.id == token_data.user_id).first()
     if user is None:
+        print(f"DEBUG AUTH: User {token_data.user_id} not found in DB")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",

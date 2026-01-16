@@ -1,4 +1,5 @@
 // Mock хранилище для демо-версии
+import { CoursePassport, ModuleLayer } from '@/services/api';
 
 export interface Category {
   id: string;
@@ -37,6 +38,7 @@ export interface Course {
   publishedAt?: string; // Дата публикации в сообществе
   views?: number; // Количество просмотров
   modules: Module[];
+  passport?: CoursePassport;
 }
 
 // Курсы, которыми поделились в коммьюнити (маркетплейс знаний)
@@ -63,6 +65,7 @@ export interface Module {
   title: string;
   description?: string;
   lessons: Lesson[];
+  layers?: ModuleLayer[];
 }
 
 export interface PracticeExercise {
@@ -89,18 +92,28 @@ export interface AdditionalMaterial {
 }
 
 export interface TermExplanation {
-  term: str;
-  explanation: str;
+  term: string;
+  explanation: string;
 }
 
 export interface Lesson {
   id: string;
   title: string;
-  content: string;
-  practice_exercises?: PracticeExercise[];
-  videos?: VideoMaterial[];
-  additional_materials?: AdditionalMaterial[];
   duration_minutes?: number;
+  type?: 'text' | 'video' | 'quiz' | 'interactive_tutor' | 'simulator' | 'case_study' | 'visual_reasoning' | 'video_driven' | 'practice';
+  // Content can be a string (markdown) or a structured object depending on type
+  content: any;
+  slides?: {
+    title: string;
+    content: string[];
+    image_prompt: string;
+    speaker_notes: string;
+    image?: string; // Filled by frontend or backend later
+  }[];
+  videos?: VideoMaterial[];
+  images?: string[];
+  practice_exercises?: PracticeExercise[];
+  additional_materials?: AdditionalMaterial[];
   // Список терминов с объяснениями
   terms?: TermExplanation[];
 }
@@ -293,7 +306,7 @@ export function generateMockCourse(topic: string, settings: any): Course {
   const courseId = crypto.randomUUID();
   const categoryName = settings.customCategory || settings.category || 'Без категории';
   const categoryId = categoryName.toLowerCase().replace(/\s+/g, '-');
-  
+
   // Проверяем, существует ли категория, если нет - создаем
   let category = categories.find(c => c.id === categoryId);
   if (!category) {
@@ -305,7 +318,7 @@ export function generateMockCourse(topic: string, settings: any): Course {
     };
     categories.push(category);
   }
-  
+
   const course: Course = {
     id: courseId,
     title: `Курс по теме: ${topic}`,
@@ -359,7 +372,7 @@ export function generateMockCourse(topic: string, settings: any): Course {
   };
 
   courses.push(course);
-  
+
   // Добавляем курс в категорию
   if (category) {
     category.courses.push(course);
@@ -416,9 +429,9 @@ export function createUserCourse(input: {
     enrolledStudents: [],
     tags: input.tags
       ? input.tags
-          .split(',')
-          .map((t) => t.trim())
-          .filter(Boolean)
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
       : [],
     language: 'ru',
     createdBy: 'Вы',
@@ -448,7 +461,7 @@ export function createUserCourse(input: {
 export function addCourseFromAPI(courseData: any): Course {
   const categoryName = courseData.category || 'Без категории';
   const categoryId = categoryName.toLowerCase().replace(/\s+/g, '-');
-  
+
   // Проверяем, существует ли категория, если нет - создаем
   let category = categories.find(c => c.id === categoryId);
   if (!category) {
@@ -460,14 +473,14 @@ export function addCourseFromAPI(courseData: any): Course {
     };
     categories.push(category);
   }
-  
+
   const course: Course = {
     ...courseData,
     category: categoryId,
   };
 
   courses.push(course);
-  
+
   // Добавляем курс в категорию
   if (category) {
     category.courses.push(course);
@@ -573,10 +586,10 @@ export function updateStudentProgress(courseId: string, studentId: string, lesso
 
   // Вычисляем общий прогресс
   const totalLessons = course.modules.reduce((sum, m) => sum + m.lessons.length, 0);
-  studentProgress.progress = totalLessons > 0 
+  studentProgress.progress = totalLessons > 0
     ? Math.round((studentProgress.completedLessons.length / totalLessons) * 100)
     : 0;
-  
+
   studentProgress.lastAccessed = new Date().toISOString();
 }
 
@@ -609,10 +622,10 @@ export function getCourseStats(courseId: string) {
   ).length;
   const avgProgress = enrolled > 0
     ? Math.round(
-        Object.values(course.studentProgress || {}).reduce(
-          (sum: number, p: any) => sum + (p.progress || 0), 0
-        ) / enrolled
-      )
+      Object.values(course.studentProgress || {}).reduce(
+        (sum: number, p: any) => sum + (p.progress || 0), 0
+      ) / enrolled
+    )
     : 0;
 
   return {

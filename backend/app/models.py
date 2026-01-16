@@ -64,16 +64,111 @@ class TermExplanation(BaseModel):
     explanation: str
 
 
-class Lesson(BaseModel):
-    """Урок"""
+class HallucinationRisk(str, Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
+class CoursePassport(BaseModel):
+    """Паспорт курса (Fill AI Ideal Format)"""
+    target_result: str = Field(..., description="Конечный результат для ученика")
+    thinking_level: str = Field(..., description="Уровень мышления (стратегический, правовой и т.д.)")
+    limitations: str = Field(..., description="Ограничения курса")
+    depth_score: int = Field(..., description="Оценка глубины 1-10")
+    hallucination_risk: HallucinationRisk = Field(HallucinationRisk.LOW, description="Риск галлюцинаций ИИ")
+
+
+class ModuleLayerType(str, Enum):
+    MEANING = "meaning"
+    CORE = "core"
+    SIMULATION = "simulation"
+    PRACTICE = "practice"
+    CONTROL = "control"
+
+
+class ModuleLayer(BaseModel):
+    """Слой модуля (Fill AI Ideal Format)"""
+    type: ModuleLayerType
     title: str
-    content: str
+    content: Any = Field(..., description="Содержимое слоя (зависит от типа)")
+
+
+
+class ExperienceType(str, Enum):
+    INTERACTIVE_TUTOR = "interactive_tutor"
+    PRACTICE = "practice"
+    SIMULATOR = "simulator"
+    CASE_STUDY = "case_study"
+    VISUAL_REASONING = "visual_reasoning"
+    VIDEO_DRIVEN = "video_driven"
+    HYBRID = "hybrid"
+    TEXT = "text" # Fallback/Legacy
+
+
+class TutorContent(BaseModel):
+    """Контент для Interactive Tutor"""
+    concept_explanation: str = Field(..., description="Объяснение концепции персонажем")
+    initial_question: str = Field(..., description="Первый вопрос студенту")
+    key_points: List[str] = Field(default_factory=list)
+    character_persona: str = Field("Friendly Teacher", description="Роль ИИ (наставник, критик и т.д.)")
+
+
+class SimulatorOption(BaseModel):
+    text: str
+    feedback: str
+    is_correct: bool = False
+    consequence: Optional[str] = None
+
+
+class SimulatorScenario(BaseModel):
+    """Сценарий симулятора"""
+    situation: str
+    context: str
+    role: str
+    options: List[SimulatorOption]
+
+
+class CaseStudyContent(BaseModel):
+    """Кейс-стади"""
+    title: str
+    scenario: str
+    documents: List[str] = Field(default_factory=list, description="Текст 'документов' или улик")
+    analysis_questions: List[str]
+    expected_insight: str
+
+
+class VisualContent(BaseModel):
+    """Визуальный модуль"""
+    image_query: str = Field(..., description="Запрос для поиска/генерации изображения")
+    description_for_ai: str = Field(..., description="Описание изображения для контекста ИИ")
+    question: str
+
+
+class VideoContent(BaseModel):
+    """Видео модуль"""
+    video_query: str
+    video_url: Optional[str] = None
+    observation_task: str = Field(..., description="Задание: что заметить в видео")
+    discussion_points: List[str]
+
+
+class Lesson(BaseModel):
+    """Урок (теперь Experience)"""
+    title: str
+    type: ExperienceType = Field(ExperienceType.TEXT, description="Тип опыта")
+    description: str = Field("", description="Краткое описание для превью")
+    # content теперь может хранить как строку (для старых), так и JSON сложной структуры
+    content: Any = Field(..., description="Основной контент или конфигурация опыта")
+    
     duration_minutes: int
+    
+    # Legacy / Optional fields
     exercises: List[str] = Field(default_factory=list)
-    practice_exercises: List[PracticeExercise] = Field(default_factory=list, description="Детальные практические упражнения")
-    videos: List[VideoMaterial] = Field(default_factory=list, description="Рекомендуемые видео")
-    additional_materials: List[AdditionalMaterial] = Field(default_factory=list, description="Дополнительные материалы")
-    terms: List[TermExplanation] = Field(default_factory=list, description="Объяснение сложных терминов в уроке")
+    practice_exercises: List[PracticeExercise] = Field(default_factory=list)
+    videos: List[VideoMaterial] = Field(default_factory=list)
+    additional_materials: List[AdditionalMaterial] = Field(default_factory=list)
+    terms: List[TermExplanation] = Field(default_factory=list)
 
 
 class Module(BaseModel):
@@ -81,6 +176,7 @@ class Module(BaseModel):
     title: str
     description: str
     lessons: List[Lesson] = Field(default_factory=list)
+    layers: Optional[List[ModuleLayer]] = Field(default=None, description="Слои модуля (для Ideal Format)")
     duration_hours: float
 
 
@@ -94,12 +190,14 @@ class Course(BaseModel):
     modules: List[Module] = Field(default_factory=list)
     total_duration_hours: float
     learning_objectives: List[str] = Field(default_factory=list)
+    passport: Optional[CoursePassport] = Field(default=None, description="Паспорт курса (Ideal Format)")
 
 
 class LessonPlan(BaseModel):
     """Черновик урока (до детализации)"""
     title: str
     content: Optional[str] = None
+    type: ExperienceType = Field(ExperienceType.TEXT, description="Тип опыта")
     duration_minutes: int = Field(30, description="Оценка длительности урока")
 
 
@@ -226,4 +324,29 @@ class CourseStructureResponse(BaseModel):
     """Ответ с предварительной структурой курса"""
     success: bool
     structure: Optional[CourseStructurePlan] = None
+    error: Optional[str] = None
+
+
+# ===== Clarifying Questions for Course Wizard =====
+
+class ClarifyingQuestion(BaseModel):
+    """Уточняющий вопрос для создания курса"""
+    id: str
+    question: str
+    type: str = Field("text", description="text, choice, or scale")
+    options: Optional[List[str]] = Field(None, description="Варианты для choice типа")
+    placeholder: Optional[str] = Field(None, description="Подсказка для text типа")
+    required: bool = False
+
+
+class ClarifyingQuestionsRequest(BaseModel):
+    """Запрос на генерацию уточняющих вопросов"""
+    topic: str = Field(..., description="Тема курса")
+    target_audience: Optional[str] = Field(None, description="Целевая аудитория")
+
+
+class ClarifyingQuestionsResponse(BaseModel):
+    """Ответ с уточняющими вопросами"""
+    success: bool
+    questions: Optional[List[ClarifyingQuestion]] = None
     error: Optional[str] = None

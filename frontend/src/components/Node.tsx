@@ -16,8 +16,8 @@ interface NodeProps {
 }
 
 export default function NodeComponent({ node, graphCenterX, graphCenterY }: NodeProps) {
-  const { selectNode, startDrag, stopDrag, isDragging, dragNodeId, updateNode } = useGraphStore();
-  const { cursorPosition } = useUIStore();
+  const { selectNode, startDrag, stopDrag, isDragging, dragNodeId, updateNode, toggleNodeMark, isHeatmapMode } = useGraphStore();
+  const { cursorPosition, activeTool } = useUIStore();
   const [isHovered, setIsHovered] = useState(false);
   const [time, setTime] = useState(0);
   const [pulseTime, setPulseTime] = useState(Math.random() * 6);
@@ -62,12 +62,22 @@ export default function NodeComponent({ node, graphCenterX, graphCenterY }: Node
     if (isDragging || isDraggingThis) {
       return;
     }
-    
-    // Используем requestAnimationFrame для плавной обработки
+
+    // Handle Marking Tools
+    if (activeTool === 'mark-green') {
+      toggleNodeMark(node.id, '#10b981');
+      return;
+    }
+    if (activeTool === 'mark-red') {
+      toggleNodeMark(node.id, '#ef4444');
+      return;
+    }
+
+    // Default Move Tool behavior: Select and Show Panel
     requestAnimationFrame(() => {
       try {
         selectNode(node.id);
-        
+
         // Показываем панель с информацией о узле
         const graphCenter = {
           x: window.innerWidth / 2,
@@ -107,35 +117,69 @@ export default function NodeComponent({ node, graphCenterX, graphCenterY }: Node
     pulseGlow * 0.2
   );
 
+  // Mock Heatmap Data (Random pass rate based on ID hash or similar)
+  // In real app, this comes from store.studentData[node.id]
+  const passRate = (node.id.charCodeAt(0) * 7) % 100;
+  const heatmapColor = passRate > 70 ? '#10b981' : passRate > 40 ? '#fbbf24' : '#ef4444';
+
   return (
     <motion.g
       transform={`translate(${node.x + oscillation.x}, ${node.y + oscillation.y})`}
       style={{ cursor: node.type === 'center' ? 'default' : 'grab' }}
     >
+      {/* Marked Halo (Teacher Annotation) */}
+      {node.marked && (
+        <motion.circle
+          cx={0}
+          cy={0}
+          r={node.radius * 2.2}
+          fill="none"
+          stroke={node.markColor || '#10b981'} // Default to Emerald
+          strokeWidth={2}
+          strokeDasharray="8 4"
+          animate={{ rotate: 360 }}
+          transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
+          opacity={0.8}
+        />
+      )}
+
+      {/* Heatmap Overlay */}
+      {isHeatmapMode && node.type !== 'center' && (
+        <motion.circle
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 0.6, scale: 1.2 }}
+          cx={0}
+          cy={0}
+          r={node.radius}
+          fill={heatmapColor}
+          filter="blur(8px)"
+        />
+      )}
+
       {/* Outer glow aura - более живой */}
       <motion.circle
         cx={0}
         cy={0}
         r={node.radius * 1.6}
         fill="none"
-        stroke={node.glowColor || node.color || '#2d2d2d'}
+        stroke={node.glowColor || (node.type === 'primary' ? '#0ea5e9' : '#10b981')}
         strokeWidth={2}
         opacity={glowIntensity * 0.3}
         animate={
           node.type === 'center'
             ? {
-                r: node.radius * (1.6 + breatheScale * 0.2),
+              r: node.radius * (1.6 + breatheScale * 0.2),
+              opacity: glowIntensity * 0.4,
+            }
+            : isHovered
+              ? {
+                r: node.radius * 1.8,
                 opacity: glowIntensity * 0.4,
               }
-            : isHovered 
-              ? {
-                  r: node.radius * 1.8,
-                  opacity: glowIntensity * 0.4,
-                }
-              : { 
-                  r: node.radius * 1.6,
-                  opacity: glowIntensity * 0.25 
-                }
+              : {
+                r: node.radius * 1.6,
+                opacity: glowIntensity * 0.25
+              }
         }
         transition={{
           duration: node.type === 'center' ? 3 : 0.4,
@@ -143,7 +187,7 @@ export default function NodeComponent({ node, graphCenterX, graphCenterY }: Node
           ease: 'easeInOut',
         }}
       />
-      
+
       {/* Дополнительное свечение при наведении */}
       {isHovered && (
         <motion.circle
@@ -155,7 +199,7 @@ export default function NodeComponent({ node, graphCenterX, graphCenterY }: Node
           strokeWidth={1}
           opacity={0.2}
           initial={{ opacity: 0, r: node.radius * 1.5 }}
-          animate={{ 
+          animate={{
             opacity: [0.2, 0.1, 0.2],
             r: [node.radius * 2, node.radius * 2.2, node.radius * 2],
           }}
@@ -182,17 +226,17 @@ export default function NodeComponent({ node, graphCenterX, graphCenterY }: Node
           strokeWidth: isHovered || isSelected ? 2.5 : 1.5,
         }}
         transition={{
-          scale: { 
-            duration: node.type === 'center' ? 4 : 0.3, 
-            repeat: node.type === 'center' ? Infinity : 0, 
-            ease: 'easeInOut' 
+          scale: {
+            duration: node.type === 'center' ? 4 : 0.3,
+            repeat: node.type === 'center' ? Infinity : 0,
+            ease: 'easeInOut'
           },
           opacity: { duration: 0.2 },
           strokeWidth: { duration: 0.2 },
         }}
         style={{
-          filter: isHovered || isSelected 
-            ? `drop-shadow(0 4px 12px ${node.glowColor || 'rgba(255, 255, 255, 0.3)'})` 
+          filter: isHovered || isSelected
+            ? `drop-shadow(0 4px 12px ${node.glowColor || 'rgba(255, 255, 255, 0.3)'})`
             : `drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2))`,
         }}
       />
@@ -200,7 +244,7 @@ export default function NodeComponent({ node, graphCenterX, graphCenterY }: Node
       {/* Иконка для центрального узла "Юзера" */}
       {node.type === 'center' && (
         <foreignObject x={-node.radius * 0.4} y={-node.radius * 0.4} width={node.radius * 0.8} height={node.radius * 0.8}>
-          <motion.div 
+          <motion.div
             className="w-full h-full flex items-center justify-center"
             animate={{
               scale: [1, 1.05, 1],
@@ -225,7 +269,7 @@ export default function NodeComponent({ node, graphCenterX, graphCenterY }: Node
           width={node.radius * 0.8}
           height={node.radius * 0.8}
         >
-          <motion.div 
+          <motion.div
             className="w-full h-full flex items-center justify-center"
             animate={isHovered ? {
               scale: [1, 1.1, 1],
@@ -252,7 +296,7 @@ export default function NodeComponent({ node, graphCenterX, graphCenterY }: Node
       {/* Иконка книги для курсов */}
       {node.type === 'sub' && (
         <foreignObject x={-node.radius * 0.35} y={-node.radius * 0.35} width={node.radius * 0.7} height={node.radius * 0.7}>
-          <motion.div 
+          <motion.div
             className="w-full h-full flex items-center justify-center"
             animate={isHovered ? {
               scale: [1, 1.15, 1],
@@ -267,10 +311,10 @@ export default function NodeComponent({ node, graphCenterX, graphCenterY }: Node
               ease: 'easeInOut',
             }}
           >
-            <BookOpen 
-              size={node.radius * 0.45} 
-              className={isHovered ? "text-green-300/90" : "text-white/75"} 
-              strokeWidth={2} 
+            <BookOpen
+              size={node.radius * 0.45}
+              className={isHovered ? "text-green-300/90" : "text-white/75"}
+              strokeWidth={2}
             />
           </motion.div>
         </foreignObject>
@@ -288,7 +332,7 @@ export default function NodeComponent({ node, graphCenterX, graphCenterY }: Node
         }}
         transition={{ duration: 0.3 }}
       />
-      
+
       {/* Дополнительные эффекты при наведении */}
       {isHovered && (
         <>
@@ -310,10 +354,10 @@ export default function NodeComponent({ node, graphCenterX, graphCenterY }: Node
           />
           {/* Иконка эффекта для курсов */}
           {node.type === 'sub' && (
-            <foreignObject 
-              x={-node.radius * 0.2} 
-              y={-node.radius * 0.2} 
-              width={node.radius * 0.4} 
+            <foreignObject
+              x={-node.radius * 0.2}
+              y={-node.radius * 0.2}
+              width={node.radius * 0.4}
               height={node.radius * 0.4}
             >
               <motion.div
@@ -392,8 +436,8 @@ export default function NodeComponent({ node, graphCenterX, graphCenterY }: Node
             state.saveNodePositions();
           }
         }}
-        whileDrag={{ 
-          scale: 1.15, 
+        whileDrag={{
+          scale: 1.15,
           cursor: 'grabbing',
           filter: 'brightness(1.2)',
         }}

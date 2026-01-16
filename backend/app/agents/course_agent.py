@@ -14,33 +14,48 @@ class CourseStructureAgent:
             model_name = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
         self.llm = ChatOpenAI(model=model_name, temperature=temperature)
         self.prompt_template = ChatPromptTemplate.from_template(
-            """Ты - эксперт по созданию образовательных курсов. 
-Создай структуру курса на основе следующих параметров:
+            """Ты - ведущий методист и архитектор образовательных треков (Learning Experience Designer). 🎓
+Твоя цель - создать не просто "курс", а захватывающее образовательное путешествие!
 
-Название курса: {title}
+Параметры курса:
+Название: {title}
 Описание: {description}
-Уровень сложности: {difficulty}
-Продолжительность: {duration_hours} часов
-Целевая аудитория: {target_audience}
-Цели обучения: {learning_objectives}
-Переданные материалы: {reference_files}
+Сложность: {difficulty}
+Длительность: {duration_hours} часов
+Аудитория: {target_audience}
+Цели: {learning_objectives}
 
-Создай детальную структуру курса, включающую:
-1. Модули (обычно 3-6 модулей в зависимости от продолжительности)
-2. Для каждого модуля: название, описание, список уроков
-3. Для каждого урока: название, краткое содержание, продолжительность в минутах
+🔴 РЕФЕРЕНСЫ:
+{reference_files}
 
-Верни ТОЛЬКО валидный JSON без дополнительных комментариев:
+ТЫ ДОЛЖЕН создать структуру из Модулей.
+Вместо скучных "уроков", используй следующие ТИПЫ ОПЫТА (Experience Types):
+
+1. **interactive_tutor** (ИИ-наставник): Для теории. Объясняет концепции, приводит примеры, задает сократовские вопросы.
+2. **simulator** (Симулятор): Для навыков. Сценарий, где ученик принимает решения и видит последствия.
+3. **case_study** (Кейс): Для анализа. Реальная ситуация, документы, поиск проблем.
+4. **visual_reasoning** (Визуал): Для насмотренности. Работа с графиками, схемами, фото.
+5. **practice** (Практика): Кодинг или письменное задание с мгновенной ИИ-проверкой.
+6. **video_driven** (Видео-анализ): Анализ видео (подбирается ИИ) с заданиями до и после.
+
+СТРАТЕГИЯ ДИЗАЙНА:
+- Чередуй типы! Не делай подряд 3 текстовых урока.
+- Начинай модуль с video_driven или interactive_tutor.
+- В середине используй simulator или case_study.
+- Завершай practice или visual_reasoning.
+
+Верни JSON структуру:
 {{
     "modules": [
         {{
-            "title": "Название модуля",
-            "description": "Описание модуля",
+            "title": "Название модуля (креативное)",
+            "description": "Чему научимся и что сделаем",
             "lessons": [
                 {{
-                    "title": "Название урока",
-                    "content": "Краткое содержание урока (1-2 предложения)",
-                    "duration_minutes": 30
+                    "title": "Название этапа",
+                    "type": "interactive_tutor | simulator | case_study | visual_reasoning | practice | video_driven",
+                    "content": "Краткое описание сути этого этапа (о чем будет речь)",
+                    "duration_minutes": 20
                 }}
             ]
         }}
@@ -57,13 +72,15 @@ class CourseStructureAgent:
         ) if course_settings.get("learning_objectives") else "Не указаны"
 
         reference_files = course_settings.get("reference_files") or []
-        reference_summary = (
-            "\n".join(
-                f"- {item.get('name')}: {item.get('content', '')[:300]}"
+        if reference_files:
+            # Полный контент файлов для строгого следования
+            reference_summary = "\n\n".join(
+                f"=== ФАЙЛ: {item.get('name', 'unnamed')} ===\n{item.get('content', '')}"
                 for item in reference_files
             )
-            if reference_files else "Не переданы"
-        )
+            reference_summary = f"ПРЕДОСТАВЛЕНО {len(reference_files)} ФАЙЛОВ:\n\n{reference_summary}\n\nИСПОЛЬЗУЙ ЭТОТ МАТЕРИАЛ КАК ОСНОВУ ДЛЯ КУРСА!"
+        else:
+            reference_summary = "Референсные файлы не предоставлены. Создай курс на основе общих знаний по теме."
         
         response = await chain.ainvoke({
             "title": course_settings.get("title", ""),
@@ -109,6 +126,7 @@ class CourseStructureAgent:
                     "lessons": [
                         {
                             "title": f"Урок {j+1}",
+                            "type": "interactive_tutor",
                             "content": "Содержание урока",
                             "duration_minutes": 30
                         }

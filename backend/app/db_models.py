@@ -33,6 +33,11 @@ class User(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_login = Column(DateTime(timezone=True), nullable=True)
 
+    # Subscription fields
+    subscription_plan = Column(String(20), default='free', nullable=False)  # free, premium
+    generations_count = Column(Integer, default=0, nullable=False)
+    subscription_expires_at = Column(DateTime(timezone=True), nullable=True)
+
     # Relationships
     created_courses = relationship("Course", back_populates="creator", foreign_keys="Course.created_by")
     enrollments = relationship("Enrollment", back_populates="user")
@@ -140,10 +145,10 @@ class Enrollment(Base):
     course = relationship("Course", back_populates="enrollments")
     student_progress = relationship("StudentProgress", back_populates="enrollment", cascade="all, delete-orphan")
 
-    # Unique constraint
-    __table_args__ = (
-        {'sqlite_autoincrement': True},
-    )
+    # Unique constraint - only for SQLite, PostgreSQL uses UUID
+    # __table_args__ = (
+    #     {'sqlite_autoincrement': True},
+    # )
 
 
 class StudentProgress(Base):
@@ -161,10 +166,10 @@ class StudentProgress(Base):
     enrollment = relationship("Enrollment", back_populates="student_progress")
     lesson = relationship("Lesson", back_populates="student_progress")
 
-    # Unique constraint
-    __table_args__ = (
-        {'sqlite_autoincrement': True},
-    )
+    # Unique constraint - only for SQLite, PostgreSQL uses UUID
+    # __table_args__ = (
+    #     {'sqlite_autoincrement': True},
+    # )
 
 
 class Tag(Base):
@@ -214,4 +219,45 @@ class DiscussionReply(Base):
     # Relationships
     discussion = relationship("Discussion", back_populates="replies")
     author = relationship("User", back_populates="discussion_replies")
+
+
+
+
+class PaymentTransaction(Base):
+    """Payment transaction model - tracks all payments"""
+    __tablename__ = "payment_transactions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey('users.id'), nullable=False, index=True)
+    
+    # CloudPayment fields
+    transaction_id = Column(String(255), nullable=True, index=True)  # CloudPayment TransactionId
+    invoice_id = Column(String(255), nullable=False, unique=True, index=True)  # Our invoice ID
+    
+    # Payment details
+    amount = Column(Float, nullable=False)
+    currency = Column(String(10), default="RUB", nullable=False)
+    description = Column(String(500), nullable=True)
+    
+    # Status tracking
+    status = Column(String(50), default="pending", nullable=False)  # pending, succeeded, failed, refunded
+    payment_method = Column(String(50), nullable=True)  # card, token, mock
+    
+    # Subscription fields (for recurring payments)
+    subscription_id = Column(String(255), nullable=True, index=True)  # CloudPayment subscription ID
+    is_recurring = Column(Boolean, default=False, nullable=False)
+    
+    # Mock mode indicator
+    is_mock = Column(Boolean, default=False, nullable=False)
+    
+    # Webhook data
+    webhook_data = Column(Text, nullable=True)  # JSON data from webhook
+    
+    # Timestamps
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Relationships
+    user = relationship("User", backref="payment_transactions")
 

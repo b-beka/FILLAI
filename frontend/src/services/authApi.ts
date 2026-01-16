@@ -25,13 +25,16 @@ export interface UserResponse {
   id: string;
   email: string;
   username: string;
-  full_name: string | null;
-  avatar_url: string | null;
-  bio: string | null;
+  full_name?: string | null;
+  avatar_url?: string | null;
+  bio?: string | null;
   role: string;
   email_verified: boolean;
   created_at: string;
-  last_login: string | null;
+  last_login?: string | null;
+  subscription_plan: 'free' | 'premium';
+  generations_count: number;
+  subscription_expires_at?: string;
 }
 
 /**
@@ -78,12 +81,12 @@ export async function login(data: LoginRequest): Promise<TokenResponse> {
  * Refresh access token
  */
 export async function refreshToken(refreshTokenValue: string): Promise<TokenResponse> {
-  const response = await fetch(`${API_URL}/api/auth/refresh`, {
+  const response = await fetch(`${API_URL}/api/auth/refresh?refresh_token=${refreshTokenValue}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ refresh_token: refreshTokenValue }),
+    // Body is empty for this request as we pass token in query
   });
 
   if (!response.ok) {

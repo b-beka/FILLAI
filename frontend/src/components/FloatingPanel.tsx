@@ -5,7 +5,9 @@ import { useEffect, useRef, useState } from 'react';
 import { ChevronDown, ChevronUp, Edit2, Save, X, Trash2, Pin, PinOff, RotateCcw, Share2, Eye, Users as UsersIcon } from 'lucide-react';
 import { useUIStore } from '@/store/uiStore';
 import { useGraphStore } from '@/store/graphStore';
-import { getCategories, shareCourseToCommunity, getSharedCourses, Course } from '@/data/mockStore';
+import { Course } from '@/data/mockStore';
+import { categoriesApi, coursesApi } from '@/services/apiClient';
+import { adaptApiCourseToCourse } from '@/services/courseAdapter';
 import CoursePreview from './CoursePreview';
 
 export default function FloatingPanel() {
@@ -16,18 +18,64 @@ export default function FloatingPanel() {
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const [isPinned, setIsPinned] = useState(false);
+  const [categories, setCategories] = useState<Array<{ id: string; label: string; courses: Course[] }>>([]);
+  const [allCourses, setAllCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId);
-  
-  // Проверяем, является ли узел курсом
-  const categories = getCategories();
-  const allCourses = categories.flatMap(cat => cat.courses);
+
+  // Load categories and courses from API
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setLoading(true);
+        const [apiCategories, apiCourses] = await Promise.all([
+          categoriesApi.list(),
+          coursesApi.list()
+        ]);
+
+        const adaptedCourses = apiCourses.map(adaptApiCourseToCourse);
+        setAllCourses(adaptedCourses);
+
+        // Group courses by category
+        const categoriesMap = new Map<string, { id: string; label: string; courses: Course[] }>();
+        
+        apiCategories.forEach(cat => {
+          categoriesMap.set(cat.id, {
+            id: cat.id,
+            label: cat.label,
+            courses: []
+          });
+        });
+
+        adaptedCourses.forEach(course => {
+          const categoryId = course.category || 'other';
+          if (!categoriesMap.has(categoryId)) {
+            categoriesMap.set(categoryId, {
+              id: categoryId,
+              label: 'Без категории',
+              courses: []
+            });
+          }
+          categoriesMap.get(categoryId)!.courses.push(course);
+        });
+
+        setCategories(Array.from(categoriesMap.values()));
+      } catch (error) {
+        console.error('Error loading categories and courses:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
   const courseForNode = selectedNode ? allCourses.find(c => c.id === selectedNode.id) : null;
-  
+
   // Проверяем, является ли узел категорией
   const isCategory = selectedNode?.type === 'primary';
   const categoryExpanded = isCategory && selectedNode ? isCategoryExpanded(selectedNode.id) : false;
-  const categoryCourses = isCategory && selectedNode 
+  const categoryCourses = isCategory && selectedNode
     ? categories.find(cat => cat.id === selectedNode.id)?.courses || []
     : [];
 
@@ -49,13 +97,13 @@ export default function FloatingPanel() {
   const handleResetPosition = () => {
     if (selectedNode && selectedNode.type !== 'center') {
       // Сбрасываем позицию к исходной (из generateNodes)
-      const categories = getCategories().filter(cat => cat.courses.length > 0);
+      const filteredCategories = categories.filter(cat => cat.courses.length > 0);
       if (selectedNode.type === 'primary') {
         // Находим индекс категории
-        const catIndex = categories.findIndex(cat => cat.id === selectedNode.id);
+        const catIndex = filteredCategories.findIndex(cat => cat.id === selectedNode.id);
         if (catIndex !== -1) {
           const categoryRadius = 200;
-          const categoryAngleStep = (2 * Math.PI) / categories.length;
+          const categoryAngleStep = (2 * Math.PI) / filteredCategories.length;
           const categoryAngle = catIndex * categoryAngleStep;
           const categoryX = Math.cos(categoryAngle) * categoryRadius;
           const categoryY = Math.sin(categoryAngle) * categoryRadius;
@@ -63,23 +111,23 @@ export default function FloatingPanel() {
         }
       } else if (selectedNode.type === 'sub') {
         // Для курса нужно найти его категорию и позицию
-        const category = categories.find(cat => cat.courses.some(c => c.id === selectedNode.id));
+        const category = filteredCategories.find(cat => cat.courses.some(c => c.id === selectedNode.id));
         if (category) {
-          const catIndex = categories.findIndex(cat => cat.id === category.id);
+          const catIndex = filteredCategories.findIndex(cat => cat.id === category.id);
           const categoryRadius = 200;
           const courseRadius = 120;
-          const categoryAngleStep = (2 * Math.PI) / categories.length;
+          const categoryAngleStep = (2 * Math.PI) / filteredCategories.length;
           const categoryAngle = catIndex * categoryAngleStep;
           const categoryX = Math.cos(categoryAngle) * categoryRadius;
           const categoryY = Math.sin(categoryAngle) * categoryRadius;
-          
+
           const courseIndex = category.courses.findIndex(c => c.id === selectedNode.id);
           const courseCount = category.courses.length;
           const courseAngleStep = (2 * Math.PI) / courseCount;
           const courseAngle = courseIndex * courseAngleStep;
           const courseX = categoryX + Math.cos(courseAngle) * courseRadius;
           const courseY = categoryY + Math.sin(courseAngle) * courseRadius;
-          
+
           updateNode(selectedNode.id, { x: courseX, y: courseY, vx: 0, vy: 0 });
         }
       }
@@ -125,316 +173,316 @@ export default function FloatingPanel() {
       <AnimatePresence>
         {panelVisible && (
           <motion.div
-          ref={panelRef}
-          className="fixed z-50 w-80 rounded-2xl bg-[#252525] backdrop-blur-glass border border-[#3a3a3a] p-6 shadow-2xl"
-          style={{
-            left: panelPosition.x,
-            top: panelPosition.y,
-          }}
-          initial={{
-            opacity: 0,
-            x: 40,
-            scale: 0.97,
-            filter: 'blur(20px)',
-          }}
-          animate={{
-            opacity: 1,
-            x: 0,
-            scale: 1,
-            filter: 'blur(0px)',
-            y: [0, -5, 0],
-          }}
-          exit={{
-            opacity: 0,
-            x: 40,
-            scale: 0.97,
-            filter: 'blur(20px)',
-          }}
-          transition={{
-            type: 'spring',
-            stiffness: 300,
-            damping: 30,
-            y: {
-              duration: 6,
-              repeat: Infinity,
-              ease: 'easeInOut',
-            },
-          }}
-          onMouseLeave={() => {
-            // Не скрываем панель, если она закреплена
-            if (!isPinned) {
-              // Optional: hide on mouse leave after delay
-            }
-          }}
-        >
-          {/* Shimmer effect */}
-          <motion.div
-            className="absolute inset-0 rounded-2xl opacity-20"
+            ref={panelRef}
+            className="fixed z-50 w-80 rounded-2xl bg-[#141414] backdrop-blur-glass border border-[#262626] p-6 shadow-2xl"
             style={{
-              background: 'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.1) 50%, transparent 100%)',
-              backgroundSize: '200% 100%',
+              left: panelPosition.x,
+              top: panelPosition.y,
+            }}
+            initial={{
+              opacity: 0,
+              x: 40,
+              scale: 0.97,
+              filter: 'blur(20px)',
             }}
             animate={{
-              backgroundPosition: ['-200% 0', '200% 0'],
+              opacity: 1,
+              x: 0,
+              scale: 1,
+              filter: 'blur(0px)',
+              y: [0, -5, 0],
+            }}
+            exit={{
+              opacity: 0,
+              x: 40,
+              scale: 0.97,
+              filter: 'blur(20px)',
             }}
             transition={{
-              duration: 3,
-              repeat: Infinity,
-              ease: 'linear',
+              type: 'spring',
+              stiffness: 300,
+              damping: 30,
+              y: {
+                duration: 6,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              },
             }}
-          />
-
-          {/* Close button */}
-          <button
-            onClick={hidePanel}
-            className="absolute top-4 right-4 w-6 h-6 flex items-center justify-center rounded-full bg-gray-600/50 hover:bg-gray-600 text-gray-300 hover:text-gray-100 transition-colors"
+            onMouseLeave={() => {
+              // Не скрываем панель, если она закреплена
+              if (!isPinned) {
+                // Optional: hide on mouse leave after delay
+              }
+            }}
           >
-            ×
-          </button>
+            {/* Shimmer effect */}
+            <motion.div
+              className="absolute inset-0 rounded-2xl opacity-20"
+              style={{
+                background: 'linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.1) 50%, transparent 100%)',
+                backgroundSize: '200% 100%',
+              }}
+              animate={{
+                backgroundPosition: ['-200% 0', '200% 0'],
+              }}
+              transition={{
+                duration: 3,
+                repeat: Infinity,
+                ease: 'linear',
+              }}
+            />
 
-          {/* Content */}
-          <div className="relative z-10">
-            <div className="flex items-center justify-between mb-2">
-              {isRenaming ? (
-                <div className="flex items-center gap-2 flex-1">
-                  <input
-                    type="text"
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleRename();
-                      if (e.key === 'Escape') setIsRenaming(false);
-                    }}
-                    autoFocus
-                    className="flex-1 px-2 py-1 bg-[#1a1a1a] border border-[#3a3a3a] rounded text-gray-100 text-lg font-bold focus:outline-none focus:border-sky-500"
-                  />
-                  <button
-                    onClick={handleRename}
-                    className="p-1.5 hover:bg-[#2d2d2d] rounded transition-colors"
-                    title="Сохранить"
-                  >
-                    <Save size={16} className="text-green-400" />
-                  </button>
-                  <button
-                    onClick={() => setIsRenaming(false)}
-                    className="p-1.5 hover:bg-[#2d2d2d] rounded transition-colors"
-                    title="Отмена"
-                  >
-                    <X size={16} className="text-gray-400" />
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <h3 className="text-xl font-bold text-gray-100 flex-1">{selectedNode.label}</h3>
-                  <div className="flex items-center gap-1">
-                    {selectedNode.type !== 'center' && (
-                      <>
-                        <button
-                          onClick={() => setIsRenaming(true)}
-                          className="p-1.5 hover:bg-[#2d2d2d] rounded transition-colors"
-                          title="Переименовать"
-                        >
-                          <Edit2 size={16} className="text-gray-400 hover:text-sky-400" />
-                        </button>
-                        <button
-                          onClick={handleResetPosition}
-                          className="p-1.5 hover:bg-[#2d2d2d] rounded transition-colors"
-                          title="Сбросить позицию"
-                        >
-                          <RotateCcw size={16} className="text-gray-400 hover:text-amber-400" />
-                        </button>
-                      </>
-                    )}
-                    <button
-                      onClick={() => setIsPinned(!isPinned)}
-                      className="p-1.5 hover:bg-[#2d2d2d] rounded transition-colors"
-                      title={isPinned ? "Открепить" : "Закрепить"}
-                    >
-                      {isPinned ? (
-                        <Pin size={16} className="text-amber-400" />
-                      ) : (
-                        <PinOff size={16} className="text-gray-400 hover:text-amber-400" />
-                      )}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-            <div className="space-y-2 text-sm text-gray-300">
-              <div>
-                <span className="text-gray-400">Тип:</span> {
-                  selectedNode.type === 'center' ? 'Центр' :
-                  selectedNode.type === 'primary' ? 'Категория' :
-                  selectedNode.type === 'sub' ? 'Курс' : selectedNode.type
-                }
-              </div>
-              {courseForNode && (
-                <>
-                  <div className="mt-4 pt-4 border-t border-gray-600/50 space-y-2">
-                    <div>
-                      <span className="text-gray-400">Формат:</span> {courseForNode.format}
-                    </div>
-                    <div>
-                      <span className="text-gray-400">Уровень:</span> {courseForNode.level}
-                    </div>
-                    <div>
-                      <span className="text-gray-400">Длительность:</span> {courseForNode.duration}
-                    </div>
-                  </div>
-                  <div className="mt-4 space-y-2">
-                    <button
-                      onClick={() => {
-                        setSelectedCourse(courseForNode);
-                        hidePanel();
+            {/* Close button */}
+            <button
+              onClick={hidePanel}
+              className="absolute top-4 right-4 w-6 h-6 flex items-center justify-center rounded-full bg-[#1a1a1a]/50 hover:bg-[#1a1a1a] text-gray-300 hover:text-white transition-colors"
+            >
+              ×
+            </button>
+
+            {/* Content */}
+            <div className="relative z-10">
+              <div className="flex items-center justify-between mb-2">
+                {isRenaming ? (
+                  <div className="flex items-center gap-2 flex-1">
+                    <input
+                      type="text"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleRename();
+                        if (e.key === 'Escape') setIsRenaming(false);
                       }}
-                      className="w-full px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded-lg transition-colors text-white font-medium flex items-center justify-center gap-2"
+                      autoFocus
+                      className="flex-1 px-2 py-1 bg-[#1a1a1a] border border-[#3a3a3a] rounded text-gray-100 text-lg font-bold focus:outline-none focus:border-sky-500"
+                    />
+                    <button
+                      onClick={handleRename}
+                      className="p-1.5 hover:bg-[#2d2d2d] rounded transition-colors"
+                      title="Сохранить"
                     >
-                      <Eye size={16} />
-                      Просмотреть курс
+                      <Save size={16} className="text-green-400" />
                     </button>
-                    {courseForNode.createdBy === 'Вы' || courseForNode.createdBy === 'Fill AI' ? (
-                      <>
-                        {getSharedCourses().some(sc => sc.courseId === courseForNode.id) ? (
+                    <button
+                      onClick={() => setIsRenaming(false)}
+                      className="p-1.5 hover:bg-[#2d2d2d] rounded transition-colors"
+                      title="Отмена"
+                    >
+                      <X size={16} className="text-gray-400" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <h3 className="text-xl font-bold text-gray-100 flex-1">{selectedNode.label}</h3>
+                    <div className="flex items-center gap-1">
+                      {selectedNode.type !== 'center' && (
+                        <>
                           <button
-                            onClick={() => {
-                              setCurrentPage('community');
-                              hidePanel();
-                            }}
-                            className="w-full px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg transition-colors text-white font-medium flex items-center justify-center gap-2"
+                            onClick={() => setIsRenaming(true)}
+                            className="p-1.5 hover:bg-[#2d2d2d] rounded transition-colors"
+                            title="Переименовать"
                           >
-                            <Share2 size={16} />
-                            Управлять в сообществе
+                            <Edit2 size={16} className="text-gray-400 hover:text-sky-400" />
                           </button>
+                          <button
+                            onClick={handleResetPosition}
+                            className="p-1.5 hover:bg-[#2d2d2d] rounded transition-colors"
+                            title="Сбросить позицию"
+                          >
+                            <RotateCcw size={16} className="text-gray-400 hover:text-amber-400" />
+                          </button>
+                        </>
+                      )}
+                      <button
+                        onClick={() => setIsPinned(!isPinned)}
+                        className="p-1.5 hover:bg-[#2d2d2d] rounded transition-colors"
+                        title={isPinned ? "Открепить" : "Закрепить"}
+                      >
+                        {isPinned ? (
+                          <Pin size={16} className="text-amber-400" />
                         ) : (
+                          <PinOff size={16} className="text-gray-400 hover:text-amber-400" />
+                        )}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+              <div className="space-y-2 text-sm text-gray-300">
+                <div>
+                  <span className="text-gray-400">Тип:</span> {
+                    selectedNode.type === 'center' ? 'Центр' :
+                      selectedNode.type === 'primary' ? 'Категория' :
+                        selectedNode.type === 'sub' ? 'Курс' : selectedNode.type
+                  }
+                </div>
+                {courseForNode && (
+                  <>
+                    <div className="mt-4 pt-4 border-t border-gray-600/50 space-y-2">
+                      <div>
+                        <span className="text-gray-400">Формат:</span> {courseForNode.format}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Уровень:</span> {courseForNode.level}
+                      </div>
+                      <div>
+                        <span className="text-gray-400">Длительность:</span> {courseForNode.duration}
+                      </div>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      <button
+                        onClick={() => {
+                          setSelectedCourse(courseForNode);
+                          hidePanel();
+                        }}
+                        className="w-full px-4 py-2 bg-sky-600 hover:bg-sky-500 rounded-lg transition-colors text-white font-medium flex items-center justify-center gap-2"
+                      >
+                        <Eye size={16} />
+                        Просмотреть курс
+                      </button>
+                      {courseForNode.createdBy === 'Вы' || courseForNode.createdBy === 'Fill AI' ? (
+                        <>
+                          {getSharedCourses().some(sc => sc.courseId === courseForNode.id) ? (
+                            <button
+                              onClick={() => {
+                                setCurrentPage('community');
+                                hidePanel();
+                              }}
+                              className="w-full px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg transition-colors text-white font-medium flex items-center justify-center gap-2"
+                            >
+                              <Share2 size={16} />
+                              Управлять в сообществе
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => {
+                                shareCourseToCommunity(courseForNode);
+                                alert('Курс опубликован в сообществе!');
+                                setCurrentPage('community');
+                                hidePanel();
+                              }}
+                              className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors text-white font-medium flex items-center justify-center gap-2"
+                            >
+                              <Share2 size={16} />
+                              Опубликовать в сообществе
+                            </button>
+                          )}
                           <button
                             onClick={() => {
-                              shareCourseToCommunity(courseForNode);
-                              alert('Курс опубликован в сообществе!');
-                              setCurrentPage('community');
+                              setCurrentPage('library');
                               hidePanel();
                             }}
-                            className="w-full px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors text-white font-medium flex items-center justify-center gap-2"
+                            className="w-full px-4 py-2 bg-[#1a1a1a] hover:bg-[#252525] rounded-lg transition-colors text-gray-100 font-medium flex items-center justify-center gap-2"
                           >
-                            <Share2 size={16} />
-                            Опубликовать в сообществе
+                            <UsersIcon size={16} />
+                            В библиотеку
                           </button>
-                        )}
+                        </>
+                      ) : (
                         <button
                           onClick={() => {
                             setCurrentPage('library');
                             hidePanel();
                           }}
-                          className="w-full px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition-colors text-gray-100 font-medium flex items-center justify-center gap-2"
+                          className="w-full px-4 py-2 bg-emerald-600 hover:bg-emerald-500 rounded-lg transition-colors text-white font-medium flex items-center justify-center gap-2"
                         >
-                          <UsersIcon size={16} />
-                          В библиотеку
+                          Добавить в библиотеку
                         </button>
-                      </>
-                    ) : (
+                      )}
+                    </div>
+                  </>
+                )}
+                {isCategory && (
+                  <div className="mt-4 pt-4 border-t border-gray-600/50 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-gray-200">
+                        Курсов в категории: {categoryCourses.length}
+                      </p>
                       <button
                         onClick={() => {
-                          setCurrentPage('library');
-                          hidePanel();
+                          if (selectedNode) {
+                            toggleCategory(selectedNode.id);
+                          }
                         }}
-                        className="w-full px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition-colors text-gray-100 font-medium flex items-center justify-center gap-2"
+                        className="flex items-center gap-2 px-4 py-2 bg-[#1a1a1a] hover:bg-[#252525] rounded-lg transition-colors text-gray-100 font-medium"
                       >
-                        Добавить в библиотеку
+                        {categoryExpanded ? (
+                          <>
+                            <ChevronUp size={16} />
+                            Скрыть курсы
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown size={16} />
+                            Показать курсы
+                          </>
+                        )}
                       </button>
+                    </div>
+                    {categoryExpanded && categoryCourses.length > 0 && (
+                      <div className="mt-2 space-y-2">
+                        <p className="text-xs text-gray-400">Курсы в этой категории:</p>
+                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                          {categoryCourses.map((course) => (
+                            <div
+                              key={course.id}
+                              className="text-xs text-gray-300 bg-[#1a1a1a] px-2 py-1 rounded"
+                            >
+                              {course.title}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     )}
                   </div>
-                </>
-              )}
-              {isCategory && (
-                <div className="mt-4 pt-4 border-t border-gray-600/50 space-y-3">
-                  <div className="flex items-center justify-between">
+                )}
+                {!courseForNode && !isCategory && selectedNode?.type !== 'center' && (
+                  <div className="mt-4 pt-4 border-t border-gray-600/50">
                     <p className="text-gray-200">
-                      Курсов в категории: {categoryCourses.length}
+                      Это категория знаний. Создайте курсы, чтобы увидеть их здесь.
                     </p>
-                    <button
-                      onClick={() => {
-                        if (selectedNode) {
-                          toggleCategory(selectedNode.id);
-                        }
-                      }}
-                      className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg transition-colors text-gray-100 font-medium"
-                    >
-                      {categoryExpanded ? (
-                        <>
-                          <ChevronUp size={16} />
-                          Скрыть курсы
-                        </>
-                      ) : (
-                        <>
-                          <ChevronDown size={16} />
-                          Показать курсы
-                        </>
-                      )}
-                    </button>
                   </div>
-                  {categoryExpanded && categoryCourses.length > 0 && (
-                    <div className="mt-2 space-y-2">
-                      <p className="text-xs text-gray-400">Курсы в этой категории:</p>
-                      <div className="space-y-1 max-h-40 overflow-y-auto">
-                        {categoryCourses.map((course) => (
-                          <div
-                            key={course.id}
-                            className="text-xs text-gray-300 bg-gray-700/30 px-2 py-1 rounded"
-                          >
-                            {course.title}
-                          </div>
-                        ))}
-                      </div>
+                )}
+                {selectedNode.type === 'center' && (
+                  <div className="mt-4 pt-4 border-t border-gray-600/50 space-y-3">
+                    <p className="text-gray-200">
+                      Вы в центре вашей сети знаний. Изучайте категории и создавайте курсы.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => {
+                          centerGraph();
+                          hidePanel();
+                        }}
+                        className="px-3 py-1.5 bg-[#1a1a1a] hover:bg-[#252525] rounded-lg transition-colors text-gray-100 text-xs font-medium flex items-center gap-2"
+                      >
+                        <RotateCcw size={12} />
+                        Центрировать граф
+                      </button>
                     </div>
-                  )}
-                </div>
-              )}
-              {!courseForNode && !isCategory && selectedNode?.type !== 'center' && (
-                <div className="mt-4 pt-4 border-t border-gray-600/50">
-                  <p className="text-gray-200">
-                    Это категория знаний. Создайте курсы, чтобы увидеть их здесь.
-                  </p>
-                </div>
-              )}
-              {selectedNode.type === 'center' && (
-                <div className="mt-4 pt-4 border-t border-gray-600/50 space-y-3">
-                  <p className="text-gray-200">
-                    Вы в центре вашей сети знаний. Изучайте категории и создавайте курсы.
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() => {
-                        centerGraph();
-                        hidePanel();
-                      }}
-                      className="px-3 py-1.5 bg-gray-600 hover:bg-gray-500 rounded-lg transition-colors text-gray-100 text-xs font-medium flex items-center gap-2"
-                    >
-                      <RotateCcw size={12} />
-                      Центрировать граф
-                    </button>
                   </div>
-                </div>
-              )}
-              
-              {/* Дополнительные действия для всех узлов */}
-              {selectedNode.type !== 'center' && (
-                <div className="mt-4 pt-4 border-t border-gray-600/50 space-y-2">
-                  <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Действия</p>
-                  <div className="space-y-1">
-                    <button
-                      onClick={() => {
-                        saveNodePositions();
-                        hidePanel();
-                      }}
-                      className="w-full px-3 py-2 bg-gray-600/50 hover:bg-gray-600 rounded-lg transition-colors text-gray-200 text-sm text-left flex items-center gap-2"
-                    >
-                      <Pin size={14} />
-                      Сохранить позицию
-                    </button>
+                )}
+
+                {/* Дополнительные действия для всех узлов */}
+                {selectedNode.type !== 'center' && (
+                  <div className="mt-4 pt-4 border-t border-gray-600/50 space-y-2">
+                    <p className="text-xs text-gray-400 uppercase tracking-wider mb-2">Действия</p>
+                    <div className="space-y-1">
+                      <button
+                        onClick={() => {
+                          saveNodePositions();
+                          hidePanel();
+                        }}
+                        className="w-full px-3 py-2 bg-[#1a1a1a] hover:bg-[#252525] rounded-lg transition-colors text-gray-200 text-sm text-left flex items-center gap-2"
+                      >
+                        <Pin size={14} />
+                        Сохранить позицию
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
-          </div>
           </motion.div>
         )}
       </AnimatePresence>

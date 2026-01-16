@@ -29,7 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (user) {
       const interval = setInterval(() => {
         refreshAccessToken();
-      }, 25 * 60 * 1000); // Refresh every 25 minutes (token expires in 30)
+      }, 20 * 60 * 1000); // Refresh every 20 minutes (token expires in 30) - safety margin
 
       return () => clearInterval(interval);
     }
