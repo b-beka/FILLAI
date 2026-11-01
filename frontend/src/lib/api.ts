@@ -154,6 +154,8 @@ export const api = {
   register: (data: { email: string; username: string; password: string; full_name?: string }) =>
     post<User>('/api/auth/register', data),
   me: () => request<User>('/api/auth/me'),
+  // ai_ready: false — в backend/.env не задан OPENAI_API_KEY
+  health: () => request<{ status: string; ai_ready?: boolean }>('/health'),
 
   myCourses: () => request<Course[]>('/api/courses/my'),
   publicCourses: () => request<Course[]>('/api/courses'),

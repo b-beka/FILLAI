@@ -113,6 +113,17 @@ app = FastAPI(
 
 logger.info(f"Starting Fill AI API in {ENVIRONMENT} mode")
 
+# Без ключа сервер работает (вход, библиотека), но курсы не генерируются — предупреждаем громко
+ENV_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+if not os.getenv("OPENAI_API_KEY", "").strip():
+    logger.warning(
+        "\n" + "=" * 64 +
+        "\n  OPENAI_API_KEY НЕ ЗАДАН — генерация курсов отключена."
+        f"\n  Откройте файл: {ENV_FILE}"
+        "\n  Впишите ключ в строку  OPENAI_API_KEY=sk-...  и перезапустите бэкенд."
+        "\n" + "=" * 64
+    )
+
 # Rate limiting (optional)
 if SLOWAPI_AVAILABLE:
     limiter = Limiter(key_func=get_remote_address)
@@ -203,7 +214,8 @@ async def health_check():
     """Проверка здоровья сервиса"""
     return {
         "status": "healthy",
-        "service": "course-generation-api"
+        "service": "course-generation-api",
+        "ai_ready": bool(os.getenv("OPENAI_API_KEY", "").strip()),
     }
 
 

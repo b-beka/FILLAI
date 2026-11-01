@@ -53,6 +53,12 @@ function Home() {
   const [showProgress, setShowProgress] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [aiReady, setAiReady] = useState(true);
+
+  // Нет ключа OpenAI — сразу говорим, куда его вписать, а не после неудачной генерации
+  useEffect(() => {
+    api.health().then((h) => setAiReady(h.ai_ready !== false)).catch(() => {});
+  }, []);
 
   const selectedId = params?.get('course');
   const moduleIdx = Number(params?.get('m') || 0);
@@ -201,6 +207,19 @@ function Home() {
           }}
         </LivingGraph>
       </Stage>
+
+      {!aiReady && !pending?.error && (
+        <div
+          role="status"
+          className="panel absolute left-1/2 -translate-x-1/2 text-white"
+          style={{ bottom: u(180), borderRadius: u(20), padding: `${u(12)} ${u(18)}`, fontSize: u(15), maxWidth: u(676) }}
+        >
+          <p>Генерация курсов выключена: не задан ключ OpenAI.</p>
+          <p className="font-light opacity-80">
+            Впишите его в <code>FillAI-official\backend\.env</code> в строку <code>OPENAI_API_KEY=</code> и перезапустите бэкенд.
+          </p>
+        </div>
+      )}
 
       {pending?.error && (
         <div
