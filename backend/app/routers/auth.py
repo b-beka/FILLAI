@@ -1,6 +1,7 @@
 """Authentication routes"""
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from app.database import get_db
@@ -54,20 +55,21 @@ async def register(
 ):
     """Register a new user. Rate limited to prevent abuse."""
     # Check if user already exists
+    # Без учёта регистра: вход тоже регистронезависимый
     existing_user = db.query(User).filter(
-        (User.email == user_data.email) | (User.username == user_data.username)
+        (func.lower(User.email) == user_data.email.lower()) | (func.lower(User.username) == user_data.username.lower())
     ).first()
     
     if existing_user:
-        if existing_user.email == user_data.email:
+        if existing_user.email.lower() == user_data.email.lower():
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Email already registered"
+                detail="Эта почта уже зарегистрирована"
             )
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Username already taken"
+                detail="Этот логин уже занят"
             )
     
     # Create new user
@@ -111,12 +113,12 @@ async def login(
     db: Session = Depends(get_db)
 ):
     """Login and get access token. Rate limited to prevent brute force attacks."""
-    # OAuth2PasswordRequestForm uses 'username' field for email
+    # OAuth2PasswordRequestForm: в поле 'username' — логин или почта
     user = authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Неверный логин или пароль",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -139,13 +141,14 @@ async def login(
 
 
 @router.post("/login/json", response_model=Token)
-async def login_json(user_data: UserLogin, db: Session = Depends(get_db)):
-    """Login using JSON (alternative to OAuth2 form)"""
-    user = authenticate_user(db, user_data.email, user_data.password)
+@get_rate_limit()
+async def login_json(request: Request, user_data: UserLogin, db: Session = Depends(get_db)):
+    """Login by username or email using JSON (alternative to OAuth2 form). Rate limited."""
+    user = authenticate_user(db, user_data.login, user_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
+            detail="Неверный логин или пароль",
             headers={"WWW-Authenticate": "Bearer"},
         )
     

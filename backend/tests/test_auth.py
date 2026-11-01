@@ -32,7 +32,7 @@ def test_register_duplicate_email(client, test_user):
         }
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "already registered" in response.json()["detail"].lower()
+    assert "уже зарегистрирована" in response.json()["detail"].lower()
 
 
 def test_register_duplicate_username(client, test_user):
@@ -46,7 +46,35 @@ def test_register_duplicate_username(client, test_user):
         }
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "username" in response.json()["detail"].lower()
+    assert "логин" in response.json()["detail"].lower()
+
+
+def test_login_json_by_username_any_case(client, test_user):
+    """Вход по логину без учёта регистра через JSON"""
+    response = client.post(
+        "/api/auth/login/json",
+        json={"login": test_user.username.upper(), "password": "testpassword123"}
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert "access_token" in response.json()
+
+
+def test_login_json_legacy_email_field(client, test_user):
+    """Старое поле «email» по-прежнему принимается"""
+    response = client.post(
+        "/api/auth/login/json",
+        json={"email": test_user.email, "password": "testpassword123"}
+    )
+    assert response.status_code == status.HTTP_200_OK
+
+
+def test_login_json_wrong_password(client, test_user):
+    response = client.post(
+        "/api/auth/login/json",
+        json={"login": test_user.username, "password": "wrong"}
+    )
+    assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    assert response.json()["detail"] == "Неверный логин или пароль"
 
 
 def test_login_success(client, test_user):

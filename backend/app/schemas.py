@@ -1,5 +1,5 @@
 """Pydantic schemas for API requests and responses"""
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AliasChoices, BaseModel, EmailStr, Field
 from typing import Optional, List
 from datetime import datetime
 from uuid import UUID
@@ -17,7 +17,8 @@ class UserCreate(UserBase):
 
 
 class UserLogin(BaseModel):
-    email: EmailStr
+    # Логин или почта; старое поле «email» тоже принимается
+    login: str = Field(..., min_length=1, validation_alias=AliasChoices("login", "email"))
     password: str
 
 

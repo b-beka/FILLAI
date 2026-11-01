@@ -1,6 +1,11 @@
 """Database models using SQLAlchemy"""
 from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Text, Float, Table
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import Uuid
+
+
+def UUID(as_uuid: bool = True) -> Uuid:
+    """UUID, работающий и в PostgreSQL (нативный тип), и в SQLite (локальный запуск)"""
+    return Uuid(as_uuid=as_uuid)
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from datetime import datetime

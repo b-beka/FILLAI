@@ -9,6 +9,11 @@ from app.main import app
 from app.database import get_db, Base
 from app.db_models import User
 from app.auth import get_password_hash
+from app.routers import auth as auth_router
+
+# Тесты логинятся чаще, чем позволяет лимит 5/мин на вход
+if auth_router.limiter:
+    auth_router.limiter.enabled = False
 
 # Use in-memory SQLite for testing
 SQLALCHEMY_DATABASE_URL = "sqlite:///:memory:"

@@ -18,17 +18,28 @@ docs/       план проекта и дизайн-токены
 
 ### Бэкенд
 
+Для локального запуска база не нужна: по умолчанию бэкенд создаёт файл SQLite
+`backend/fillai.db`. Нужен Python 3.11+.
+
 ```bash
 cd backend
 python -m venv venv
 venv\Scripts\activate            # Windows; на Linux/Mac: source venv/bin/activate
 pip install -r requirements.txt
-cp env.example .env              # укажите OPENAI_API_KEY, DATABASE_URL, SECRET_KEY
-alembic upgrade head
+cp env.example .env              # SECRET_KEY обязателен, OPENAI_API_KEY — для генерации курсов
 uvicorn app.main:app --reload --port 8000
 ```
 
-Документация API: http://localhost:8000/docs
+Без `OPENAI_API_KEY` работает всё, кроме генерации курсов и AI-проверки.
+На сервере укажите `DATABASE_URL=postgresql://…` и выполните `alembic upgrade head`.
+
+Создать пользователя без письма-подтверждения (пароль спросит в терминале):
+
+```bash
+python -m scripts.create_user --username Bekzhan --email bekzhan@fill.ai --name "Бекжан"
+```
+
+Войти можно по логину или почте. Документация API: http://localhost:8000/docs
 
 ### Фронтенд
 

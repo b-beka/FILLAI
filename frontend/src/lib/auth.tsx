@@ -1,13 +1,13 @@
 'use client';
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
-import { api, tokens, type User } from './api';
+import { api, ApiError, tokens, type User } from './api';
 
 interface AuthState {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (data: { email: string; username: string; password: string }) => Promise<void>;
+  login: (login: string, password: string) => Promise<void>;
+  register: (data: { email: string; username: string; password: string; full_name?: string }) => Promise<void>;
   logout: () => void;
 }
 
@@ -25,19 +25,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     api
       .me()
       .then(setUser)
-      .catch(() => tokens.clear())
+      // Разлогиниваем только если токен отвергнут, а не когда сервер недоступен
+      .catch((e) => {
+        if (e instanceof ApiError && (e.status === 401 || e.status === 403)) tokens.clear();
+      })
       .finally(() => setLoading(false));
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    await api.login(email, password);
+  const login = useCallback(async (identifier: string, password: string) => {
+    await api.login(identifier, password);
     setUser(await api.me());
   }, []);
 
   const register = useCallback(
-    async (data: { email: string; username: string; password: string }) => {
+    async (data: { email: string; username: string; password: string; full_name?: string }) => {
       await api.register(data);
-      await login(data.email, data.password);
+      await login(data.username, data.password);
     },
     [login],
   );

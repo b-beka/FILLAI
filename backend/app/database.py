@@ -7,17 +7,21 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Database URL from environment
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost:5432/fillai_db")
+# Database URL from environment. По умолчанию — файл SQLite для локального запуска без установки базы
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./fillai.db")
+IS_SQLITE = DATABASE_URL.startswith("sqlite")
 
 # Create engine
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,  # Verify connections before using
-    pool_size=10,
-    max_overflow=20,
-    echo=False  # Set to True for SQL query logging in development
-)
+if IS_SQLITE:
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False}, echo=False)
+else:
+    engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,  # Verify connections before using
+        pool_size=10,
+        max_overflow=20,
+        echo=False  # Set to True for SQL query logging in development
+    )
 
 # Session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

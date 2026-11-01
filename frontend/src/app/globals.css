@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Тёмная тема — основной макет Figma */
+/* Серебро — основной макет Figma (тема по умолчанию) */
 :root {
   --u: max(0.6px, min(100vw / 1728, 100vh / 1117));
   --side: 32 32 32;          /* #202020 сайдбар */
@@ -19,6 +19,25 @@
   --ring-1: #2f2f2f;
   --ring-2: #474747;
   --ring-3: #bdbdbd;
+  color-scheme: dark;
+}
+
+/* Тёмная тема — почти чёрный холст, узлы графитовые */
+:root[data-theme='dark'] {
+  --side: 17 17 17;
+  --line: 44 44 44;
+  --ink: 236 236 236;
+  --muted: 120 120 120;
+  --field: 38 38 38;
+  --field-ink: 236 236 236;
+  --canvas: linear-gradient(125deg, #0b0b0b 0%, #101010 30%, #1b1b1b 52%, #121212 75%, #0b0b0b 100%);
+  --node: linear-gradient(135deg, #4a4a4a 0%, #303030 50%, #1d1d1d 100%);
+  --node-ink: #e4e4e4;
+  --edge: rgba(255, 255, 255, 0.6);
+  --panel: linear-gradient(160deg, rgba(48, 48, 48, 0.96) 0%, rgba(30, 30, 30, 0.96) 100%);
+  --ring-1: #161616;
+  --ring-2: #222222;
+  --ring-3: #3a3a3a;
   color-scheme: dark;
 }
 
@@ -129,8 +148,9 @@ body {
     transform: translate(-50%, -50%) scale(1);
   }
 }
+/* backwards, а не both: после появления transform снова задаётся инлайном (масштаб при перетаскивании) */
 .node-in {
-  animation: node-in 0.35s ease-out both;
+  animation: node-in 0.35s ease-out backwards;
 }
 
 @keyframes pulse-soft {

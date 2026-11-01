@@ -119,8 +119,12 @@ if SLOWAPI_AVAILABLE:
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# Database tables are created via Alembic migrations
-# Base.metadata.create_all(bind=engine)  # Disabled for production
+# В PostgreSQL таблицы создаются миграциями Alembic; локальный SQLite создаётся сразу
+from app.database import Base, engine, IS_SQLITE
+from app import db_models as _models  # noqa: F401 — регистрирует модели в Base.metadata
+
+if IS_SQLITE:
+    Base.metadata.create_all(bind=engine)
 
 # Настройка CORS для работы с фронтендом
 cors_origins_env = os.getenv("CORS_ORIGINS", "*")
@@ -154,12 +158,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class _Lazy:
+    """Создаёт агента при первом обращении: без OPENAI_API_KEY сервер всё равно стартует
+    (вход, библиотека, сообщество работают), падает только сама генерация."""
+
+    def __init__(self, factory):
+        self._factory = factory
+        self._obj = None
+
+    def __getattr__(self, name):
+        if self._obj is None:
+            self._obj = self._factory()
+        return getattr(self._obj, name)
+
+
 # Инициализируем координатор курсов и дополнительные агенты
-coordinator = CourseCoordinator()
-grading_agent = ExerciseGradingAgent()
-assistant_agent = PersonalAssistantAgent()
-test_generator = TestGeneratorAgent()
-clarifying_questions_agent = ClarifyingQuestionsAgent()
+coordinator = _Lazy(CourseCoordinator)
+grading_agent = _Lazy(ExerciseGradingAgent)
+assistant_agent = _Lazy(PersonalAssistantAgent)
+test_generator = _Lazy(TestGeneratorAgent)
+clarifying_questions_agent = _Lazy(ClarifyingQuestionsAgent)
 
 # Include routers
 app.include_router(auth.router)

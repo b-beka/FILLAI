@@ -5,6 +5,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 from app.database import get_db
 from app.db_models import User
@@ -147,9 +148,10 @@ async def get_current_active_user(
     return current_user
 
 
-def authenticate_user(db: Session, email: str, password: str) -> Optional[User]:
-    """Authenticate user by email and password"""
-    user = db.query(User).filter(User.email == email).first()
+def authenticate_user(db: Session, login: str, password: str) -> Optional[User]:
+    """Authenticate user by username or email (без учёта регистра) and password"""
+    login = login.strip().lower()
+    user = db.query(User).filter(or_(func.lower(User.email) == login, func.lower(User.username) == login)).first()
     if not user:
         return None
     if not verify_password(password, user.password_hash):

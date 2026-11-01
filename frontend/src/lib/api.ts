@@ -97,24 +97,47 @@ async function refresh(): Promise<boolean> {
   return true;
 }
 
+// Понятные сообщения для ошибок валидации FastAPI (422)
+const FIELD_ERRORS: Record<string, string> = {
+  email: 'Проверьте почту — похоже, в ней ошибка',
+  username: 'Логин — от 3 до 100 символов',
+  password: 'Пароль — не короче 8 символов',
+  login: 'Введите логин или почту',
+};
+
+function errorMessage(status: number, body: { detail?: unknown }): string {
+  if (typeof body.detail === 'string') return body.detail;
+  if (Array.isArray(body.detail)) {
+    const field = body.detail[0]?.loc?.at(-1);
+    return FIELD_ERRORS[field] ?? 'Проверьте введённые данные';
+  }
+  if (status === 429) return 'Слишком много попыток — подождите минуту';
+  return `Ошибка ${status}`;
+}
+
 async function request<T>(path: string, init: RequestInit = {}, retry = true): Promise<T> {
   const token = tokens.get();
-  const res = await fetch(`${API_URL}${path}`, {
-    ...init,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init.headers,
-    },
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_URL}${path}`, {
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...init.headers,
+      },
+    });
+  } catch {
+    throw new ApiError('Сервер недоступен — проверьте, что бэкенд запущен', 0);
+  }
 
-  if (res.status === 401 && retry && (await refresh().catch(() => false))) {
+  const isAuthCall = path.startsWith('/api/auth/login') || path.startsWith('/api/auth/register');
+  if (res.status === 401 && retry && !isAuthCall && (await refresh().catch(() => false))) {
     return request<T>(path, init, false);
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    const detail = typeof body.detail === 'string' ? body.detail : `Ошибка ${res.status}`;
-    throw new ApiError(detail, res.status);
+    throw new ApiError(errorMessage(res.status, body), res.status);
   }
   return res.status === 204 ? (undefined as T) : res.json();
 }
@@ -123,8 +146,9 @@ const post = <T>(path: string, body?: unknown) =>
   request<T>(path, { method: 'POST', body: body === undefined ? undefined : JSON.stringify(body) });
 
 export const api = {
-  async login(email: string, password: string) {
-    const t = await post<{ access_token: string; refresh_token: string }>('/api/auth/login/json', { email, password });
+  // login — логин или почта
+  async login(login: string, password: string) {
+    const t = await post<{ access_token: string; refresh_token: string }>('/api/auth/login/json', { login, password });
     tokens.set(t.access_token, t.refresh_token);
   },
   register: (data: { email: string; username: string; password: string; full_name?: string }) =>
