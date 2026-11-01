@@ -2,73 +2,186 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Тёмная тема — основной макет Figma */
 :root {
-  --dark-bg: #050505;
-  --dark-surface: #151515;
-  --dark-elevated: #1f1f1f;
-  --dark-border: #3c3c3c;
+  --u: max(0.6px, min(100vw / 1728, 100vh / 1117));
+  --side: 32 32 32;          /* #202020 сайдбар */
+  --line: 70 70 70;          /* #464646 разделители */
+  --ink: 255 255 255;        /* текст */
+  --muted: 140 140 140;      /* подписи «Запросы» */
+  --field: 217 217 217;      /* #d9d9d9 строка «Изучить» */
+  --field-ink: 32 32 32;
+  --canvas: linear-gradient(125deg, #303030 0%, #353535 22%, #5e5e5e 48%, #6a6a6a 55%, #4a4a4a 72%, #303030 100%);
+  --node: linear-gradient(135deg, #b4b4b4 0%, #8a8a8a 45%, #5c5c5c 100%);
+  --node-ink: #e9e9e9;
+  --edge: #ffffff;
+  --panel: linear-gradient(160deg, rgba(160, 160, 160, 0.92) 0%, rgba(120, 120, 120, 0.9) 55%, rgba(100, 100, 100, 0.9) 100%);
+  --ring-1: #2f2f2f;
+  --ring-2: #474747;
+  --ring-3: #bdbdbd;
+  color-scheme: dark;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+/* Светлая тема — кадр «MacBook Pro 16 - 2» */
+:root[data-theme='light'] {
+  --side: 245 245 245;
+  --line: 220 220 220;
+  --ink: 32 32 32;
+  --muted: 150 150 150;
+  --field: 255 255 255;
+  --field-ink: 32 32 32;
+  --canvas: linear-gradient(125deg, #ececec 0%, #e2e2e2 25%, #bdbdbd 50%, #c8c8c8 62%, #e4e4e4 80%, #ececec 100%);
+  --node: linear-gradient(135deg, #ffffff 0%, #e2e2e2 45%, #bdbdbd 100%);
+  --node-ink: #ffffff;
+  --edge: #ffffff;
+  --panel: linear-gradient(160deg, rgba(220, 220, 220, 0.95) 0%, rgba(185, 185, 185, 0.92) 100%);
+  --ring-1: #cfcfcf;
+  --ring-2: #dcdcdc;
+  --ring-3: #f4f4f4;
+  color-scheme: light;
 }
 
 html,
 body {
   height: 100%;
-  width: 100%;
-  overflow: auto;
-  background: radial-gradient(circle at 50% 10%, #1a1a1a 0%, #050505 60%, #000000 100%);
-  color: #ffffff;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  background: rgb(var(--side));
+  color: rgb(var(--ink));
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-#__next {
-  height: 100%;
-  width: 100%;
+.bg-canvas {
+  background: var(--canvas);
 }
 
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+.node {
+  background: var(--node);
+  color: var(--node-ink);
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.25), 0 6px 18px rgba(0, 0, 0, 0.18);
 }
 
-::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
+.panel {
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: rgb(var(--line));
+  border-radius: 3px;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+/* Конспект (markdown) */
+.prose-fill {
+  font-weight: 300;
+  line-height: 1.7;
+  color: rgb(var(--ink) / 0.88);
+}
+.prose-fill > * + * {
+  margin-top: 0.8em;
+}
+.prose-fill h1,
+.prose-fill h2,
+.prose-fill h3 {
+  font-weight: 500;
+  color: rgb(var(--ink));
+  margin-top: 1.3em;
+}
+.prose-fill h1 { font-size: 1.3em; }
+.prose-fill h2 { font-size: 1.15em; }
+.prose-fill h3 { font-size: 1.05em; }
+.prose-fill ul { list-style: disc; padding-left: 1.3em; }
+.prose-fill ol { list-style: decimal; padding-left: 1.3em; }
+.prose-fill strong { font-weight: 500; color: rgb(var(--ink)); }
+.prose-fill a { text-decoration: underline; }
+.prose-fill code {
+  font-size: 0.9em;
+  background: rgb(0 0 0 / 0.3);
+  border-radius: 6px;
+  padding: 0.1em 0.35em;
+}
+.prose-fill pre {
+  overflow-x: auto;
+  background: rgb(0 0 0 / 0.35);
+  border-radius: 14px;
+  padding: 1em;
+}
+.prose-fill pre code { background: none; padding: 0; }
+.prose-fill blockquote {
+  border-left: 2px solid rgb(var(--ink) / 0.4);
+  padding-left: 1em;
+}
+.prose-fill table { width: 100%; border-collapse: collapse; font-size: 0.95em; }
+.prose-fill th,
+.prose-fill td { border: 1px solid rgb(var(--ink) / 0.2); padding: 0.4em 0.6em; }
+
+@keyframes node-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+.node-in {
+  animation: node-in 0.35s ease-out both;
 }
 
-/* Glassmorphism utility */
-.glass {
-  background: rgba(18, 18, 18, 0.8);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.pulse-soft {
+  animation: pulse-soft 1.4s ease-in-out infinite;
 }
 
-/* Prevent text selection on UI elements */
-.no-select {
-  -webkit-user-select: none;
-  -moz-user-select: none;
-  -ms-user-select: none;
-  user-select: none;
+/* Телефон: сайдбар выезжает поверх, холст крупнее */
+@media (max-width: 767px) {
+  :root {
+    --u: max(0.34px, min(100vw / 1000, 100vh / 1117));
+  }
+  .sidebar {
+    --u: 0.8px;
+  }
+  /* Панель курса — нижним листом над строкой «Изучить» */
+  .training-panel {
+    --u: 0.8px;
+    position: fixed !important;
+    left: 16px !important;
+    right: 16px !important;
+    top: auto !important;
+    bottom: 84px !important;
+    width: auto !important;
+    height: 300px !important;
+    transform: none !important;
+    animation: none !important;
+    z-index: 10;
+  }
+  .training-link {
+    display: none;
+  }
+  .stage {
+    top: calc(30% - 558.5 * var(--u)) !important;
+  }
+  .search {
+    --u: 0.42px;
+  }
+  .search input {
+    font-size: 16px !important;
+  }
 }
 
-/* Smooth transitions */
-* {
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+@media (prefers-reduced-motion: reduce) {
+  .node-in,
+  .pulse-soft {
+    animation: none;
+  }
 }

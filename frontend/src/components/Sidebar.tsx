@@ -1,139 +1,152 @@
 'use client';
 
-import { motion } from 'framer-motion';
-import { BookOpen, Users, User, Network, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
-import { useUIStore } from '@/store/uiStore';
-import { useAuth } from '@/contexts/AuthContext';
+import Link from 'next/link';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { Icon, Logo, type IconName } from './Icons';
+import { useCourses } from '@/lib/courses';
+import { u } from '@/lib/units';
 
-interface SidebarItem {
-  id: string;
-  label: string;
-  icon: React.ReactNode;
-}
+// Геометрия — слой «Group 8» кадра «MacBook Pro 16 - 4»: ширина 375, строки 65, иконки 30, текст 20
+const NAV: { href: string; label: string; icon: IconName }[] = [
+  { href: '/library', label: 'Библиотека', icon: 'library' },
+  { href: '/community', label: 'Сообщество', icon: 'community' },
+  { href: '/friends', label: 'Друзья', icon: 'friends' },
+  { href: '/profile', label: 'Профиль', icon: 'profile' },
+];
 
-export default function Sidebar() {
-  const { currentPage, setCurrentPage, sidebarOpen, setSidebarOpen, showGraph, showCommunity } = useUIStore();
-  const { user } = useAuth();
+export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const pathname = usePathname();
+  const params = useSearchParams();
+  const { courses, pending } = useCourses();
+  const [collapsed, setCollapsed] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [help, setHelp] = useState(false);
 
-  // Simplified sidebar items - только библиотека и профиль
-  const sidebarItems: SidebarItem[] = [
-    { id: 'library', label: 'Мои курсы', icon: <BookOpen size={20} /> },
-    // Community скрыт через флаг showCommunity
-    ...(showCommunity ? [{ id: 'community', label: 'Коммьюнити', icon: <Users size={20} /> }] : []),
-    { id: 'profile', label: 'Профиль', icon: <User size={20} /> },
-  ];
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('theme');
+      if (saved === 'light') setTheme('light');
+    } catch {}
+  }, []);
 
-  // Когда панель закрыта — показываем только маленькую кнопку у левого края экрана
-  if (!sidebarOpen) {
-    return (
-      <motion.button
-        onClick={() => setSidebarOpen(true)}
-        className="fixed top-24 left-4 z-50 p-3 bg-[#252525] border border-[#3a3a3a] rounded-full text-gray-200 hover:text-white hover:bg-[#2d2d2d] transition-colors shadow-xl flex items-center gap-2"
-        initial={{ x: -40, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        whileHover={{ scale: 1.07 }}
-        whileTap={{ scale: 0.96 }}
-      >
-        <ChevronRight size={20} />
-        <span className="text-sm font-semibold tracking-wide">Меню</span>
-      </motion.button>
-    );
-  }
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem('theme', theme);
+    } catch {}
+  }, [theme]);
+
+  useEffect(onClose, [pathname, params, onClose]);
+
+  const width = collapsed ? 100 : 375;
+  const activeCourse = params?.get('course');
 
   return (
-    <motion.aside
-      className="relative z-40 flex-shrink-0 bg-[#0a0a0a] border-r border-[#262626] flex flex-col h-full w-80 shadow-2xl overflow-hidden"
-      initial={{ x: -40, opacity: 0 }}
-      animate={{ x: 0, opacity: 1 }}
-      exit={{ x: -40, opacity: 0 }}
-      transition={{ duration: 0.25, ease: 'easeInOut' }}
-    >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_0%_0%,rgba(16,185,129,0.05),transparent_50%)]"></div>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_100%_100%,rgba(14,165,233,0.05),transparent_50%)]"></div>
-
-      {/* Основная навигация */}
-      <nav className="flex-1 px-7 py-8 space-y-3 pt-20">
-        {/* Главная страница - чат для генерации курсов */}
-        <motion.button
-          onClick={() => setCurrentPage('chat')}
-          className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-xl text-left transition-colors relative group mb-2 ${currentPage === 'chat'
-            ? 'text-white bg-[#2d2d2d]'
-            : 'text-gray-200 hover:text-white hover:bg-[#2d2d2d]/60'
-            }`}
-        >
-          <Sparkles size={22} className="text-emerald-400" />
-          <span className="text-[15px] font-semibold">Создать курс</span>
-        </motion.button>
-
-        {/* Граф знаний - скрыт через флаг showGraph */}
-        {showGraph && (
-          <motion.button
-            onClick={() => setCurrentPage('graph')}
-            className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-xl text-left transition-colors relative group mb-2 ${currentPage === 'graph'
-              ? 'text-white bg-[#2d2d2d]'
-              : 'text-gray-200 hover:text-white hover:bg-[#2d2d2d]/60'
-              }`}
-          >
-            <Network size={22} />
-            <span className="text-[15px] font-semibold">Граф знаний</span>
-          </motion.button>
-        )}
-
-        {sidebarItems.map((item) => (
-          <motion.button
-            key={item.id}
-            onClick={() => setCurrentPage(item.id as 'library' | 'community' | 'profile')}
-            className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-xl text-left transition-colors relative group ${currentPage === item.id
-              ? 'text-white bg-[#2d2d2d]'
-              : 'text-gray-200 hover:text-white hover:bg-[#2d2d2d]/40'
-              }`}
-            whileHover={{ x: 4 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 25 }}
-          >
-            <span className={`relative z-10 ${currentPage === item.id ? 'text-white' : 'text-gray-300 group-hover:text-gray-200'}`}>
-              {item.icon}
-            </span>
-            <span className="relative z-10 font-semibold text-[15px]">{item.label}</span>
-          </motion.button>
-        ))}
-      </nav>
-
-      {/* Профиль внизу */}
-      <motion.div
-        className="px-7 py-5 border-t border-[#3a3a3a]"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
+    <>
+      {open && <button aria-label="Закрыть меню" className="fixed inset-0 z-30 bg-black/40 md:hidden" onClick={onClose} />}
+      <aside
+        className={`sidebar fixed inset-y-0 left-0 z-40 flex w-[300px] shrink-0 flex-col bg-side text-ink transition-[transform,width] duration-200 md:static md:w-[var(--sw)] md:translate-x-0 ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        }`}
+        style={{ ['--sw' as string]: u(width) }}
       >
-        <div className="flex items-center gap-3">
-          <motion.div
-            className="w-11 h-11 rounded-full bg-[#2d2d2d] flex items-center justify-center text-gray-100 font-semibold text-sm overflow-hidden"
-            whileHover={{ scale: 1.08 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 17 }}
+        {/* Лого + свернуть */}
+        <div className="flex shrink-0 items-center justify-between" style={{ height: u(100), paddingLeft: u(20), paddingRight: u(collapsed ? 20 : 43) }}>
+          <Link href="/" aria-label="FILL AI — главная" className={collapsed ? 'hidden' : ''}>
+            <Logo size={u(60)} />
+          </Link>
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            className="hidden text-ink/90 hover:text-ink md:block"
+            aria-label={collapsed ? 'Развернуть панель' : 'Свернуть панель'}
+            style={{ width: u(38), height: u(38), marginInline: collapsed ? 'auto' : undefined }}
           >
-            {user?.avatar_url ? (
-              <img src={user.avatar_url} alt={user.username || 'User'} className="w-full h-full object-cover" />
-            ) : (
-              <span>{user?.username?.[0]?.toUpperCase() || 'ID'}</span>
-            )}
-          </motion.div>
-          <div>
-            <div className="text-gray-100 font-semibold text-sm leading-tight">{user?.full_name || user?.username || 'Гость'}</div>
-            <div className="text-gray-400 text-[11px]">{user?.email || 'Войдите в аккаунт'}</div>
-          </div>
+            <Icon name="panel" size="100%" strokeWidth={1.4} />
+          </button>
         </div>
-      </motion.div>
 
-      {/* Кнопка закрытия, "прилипшая" к правому краю панели */}
-      <motion.button
-        onClick={() => setSidebarOpen(false)}
-        className="absolute top-7 -right-4 z-50 p-2.5 bg-[#252525] border border-[#3a3a3a] rounded-full text-gray-300 hover:text-white hover:bg-[#2d2d2d] transition-colors shadow-lg flex items-center justify-center"
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.95 }}
-        aria-label="Закрыть панель"
-      >
-        <ChevronLeft size={18} />
-      </motion.button>
-    </motion.aside>
+        <nav style={{ marginTop: u(15) }}>
+          {NAV.map((item) => {
+            const active = pathname?.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                title={item.label}
+                className={`flex items-center transition-colors hover:bg-ink/[0.05] ${active ? 'bg-ink/[0.08]' : ''}`}
+                style={{ height: u(65), paddingLeft: u(35), gap: u(31), fontSize: u(20) }}
+              >
+                <Icon name={item.icon} size={u(30)} strokeWidth={1.2} className="shrink-0" />
+                {!collapsed && <span className="font-light">{item.label}</span>}
+              </Link>
+            );
+          })}
+        </nav>
+
+        <div className="shrink-0 bg-line" style={{ height: 1, marginTop: u(33) }} />
+
+        {!collapsed && (
+          <div className="flex min-h-0 flex-1 flex-col" style={{ paddingTop: u(43) }}>
+            <p className="font-light text-muted" style={{ paddingLeft: u(17), fontSize: u(20), marginBottom: u(10) }}>
+              Запросы
+            </p>
+            <ul className="scroll-thin min-h-0 flex-1 overflow-y-auto border-l border-line" style={{ marginLeft: u(35), marginRight: u(10) }}>
+              {pending && (
+                <li className="pulse-soft truncate font-light text-muted" style={{ height: u(65), lineHeight: u(65), paddingLeft: u(27), fontSize: u(20) }}>
+                  {pending.topic}
+                </li>
+              )}
+              {courses.map((c) => (
+                <li key={c.id}>
+                  <Link
+                    href={`/?course=${c.id}`}
+                    title={c.title}
+                    className={`block truncate font-normal transition-colors hover:bg-ink/[0.05] ${activeCourse === c.id ? 'bg-ink/[0.08]' : ''}`}
+                    style={{ height: u(65), lineHeight: u(65), paddingLeft: u(27), fontSize: u(20) }}
+                  >
+                    {c.title}
+                  </Link>
+                </li>
+              ))}
+              {!pending && courses.length === 0 && (
+                <li className="font-light text-muted/70" style={{ paddingLeft: u(27), paddingTop: u(18), fontSize: u(16), lineHeight: 1.5 }}>
+                  Здесь появятся ваши темы
+                </li>
+              )}
+            </ul>
+          </div>
+        )}
+        {collapsed && <div className="flex-1" />}
+
+        {/* Низ: настройки (тема) и помощь */}
+        <div className="relative shrink-0 border-t border-line">
+          <div className="flex items-center justify-between" style={{ height: u(64), paddingLeft: u(35), paddingRight: u(collapsed ? 35 : 21) }}>
+            <button
+              onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+              aria-label={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+              title={theme === 'dark' ? 'Светлая тема' : 'Тёмная тема'}
+              className="text-ink/90 hover:text-ink"
+            >
+              <Icon name="settings" size={u(31)} strokeWidth={1.3} />
+            </button>
+            {!collapsed && (
+              <button onClick={() => setHelp((h) => !h)} aria-label="Помощь" className="text-ink/90 hover:text-ink">
+                <Icon name="help" size={u(31)} strokeWidth={1.3} />
+              </button>
+            )}
+          </div>
+          {help && (
+            <div className="panel absolute bottom-full right-3 mb-3 w-72 rounded-2xl p-5 text-sm leading-relaxed text-white">
+              <p className="mb-2 font-medium">Как пользоваться</p>
+              <p className="font-light">
+                Напишите тему в строке «Изучить» — FILL AI соберёт мини-курс: конспект, видео, задания и тест. Каждая тема становится веткой
+                вашего графа знаний.
+              </p>
+            </div>
+          )}
+        </div>
+      </aside>
+    </>
   );
 }

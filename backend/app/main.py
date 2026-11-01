@@ -91,7 +91,6 @@ from app.models import (
     ClarifyingQuestionsRequest,
     ClarifyingQuestionsResponse,
 )
-from app.schemas import GradeRequest, GradeResponse
 from app.agents.course_coordinator import CourseCoordinator
 from app.agents.grading_agent import ExerciseGradingAgent
 from app.agents.assistant_agent import PersonalAssistantAgent
@@ -393,34 +392,6 @@ async def generate_course(
         )
 
 
-@app.post("/api/courses/generate/batch")
-async def generate_courses_batch(requests: list[CourseGenerationRequest]):
-    """
-    Генерирует несколько курсов параллельно
-    """
-    try:
-        import asyncio
-        
-        tasks = [
-            coordinator.generate_course(req.settings)
-            for req in requests
-        ]
-        
-        courses = await asyncio.gather(*tasks)
-        
-        return {
-            "success": True,
-            "courses": [course.model_dump() for course in courses],
-            "count": len(courses)
-        }
-    
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Ошибка при пакетной генерации: {str(e)}"
-        )
-
-
 @app.post("/api/ai/grade-exercise", response_model=ExerciseCheckResponse)
 async def grade_exercise(request: ExerciseCheckRequest):
     """
@@ -555,28 +526,6 @@ async def preview_course_structure(request: CourseGenerationRequest):
         )
 
 
-# Grading Agent
-from app.agents.grading_agent import ExerciseGradingAgent
-grading_agent = ExerciseGradingAgent()
-
-@app.post("/api/ai/grade-exercise", response_model=GradeResponse)
-async def grade_exercise(request: GradeRequest):
-    """
-    Проверяет практическое задание с помощью ИИ
-    """
-    try:
-        result = await grading_agent.grade_exercise(request.model_dump())
-        return GradeResponse(**result)
-    except Exception as e:
-        logger.error(f"Error grading exercise: {e}", exc_info=True)
-        # Fallback response
-        return GradeResponse(
-            score=0, 
-            verdict="Ошибка проверки", 
-            strengths=[], 
-            improvements=[], 
-            ai_feedback="Произошла ошибка при обращении к ИИ. Попробуйте позже."
-        )
 
 if __name__ == "__main__":
     import uvicorn

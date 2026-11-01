@@ -234,18 +234,3 @@ class DiscussionReplyResponse(DiscussionReplyBase):
 DiscussionResponse.model_rebuild()
 DiscussionReplyResponse.model_rebuild()
 CourseResponse.model_rebuild()
-
-
-class GradeRequest(BaseModel):
-    course_title: str
-    lesson_title: str
-    exercise_title: str
-    exercise_description: str
-    user_answer: str
-
-class GradeResponse(BaseModel):
-    score: int
-    verdict: str
-    strengths: List[str]
-    improvements: List[str]
-    ai_feedback: str

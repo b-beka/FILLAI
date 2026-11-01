@@ -255,23 +255,3 @@ def enroll_course(
     db.add(enrollment)
     db.commit()
     return {"message": "Enrolled"}
-
-
-@router.delete("/{course_id}", status_code=status.HTTP_200_OK)
-def delete_course(
-    course_id: UUID,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """Delete a course (only owner)"""
-    course = db.query(Course).filter(Course.id == course_id).first()
-    if not course:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Course not found")
-    
-    if course.created_by != current_user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
-    
-    db.delete(course)
-    db.commit()
-    return {"message": "Course deleted"}
-
