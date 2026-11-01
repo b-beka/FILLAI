@@ -1,6 +1,6 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { STAGE, u } from '@/lib/units';
 
 export interface GraphNode {
@@ -17,6 +17,9 @@ export interface GraphNode {
   delay?: number;
 }
 
+type Point = { x: number; y: number };
+type Body = Point & { vx: number; vy: number; phase: number };
+
 // Сцена 1353×1117 в единицах макета, центрируется в холсте
 export function Stage({ children }: { children: ReactNode }) {
   return (
@@ -30,40 +33,176 @@ export function Stage({ children }: { children: ReactNode }) {
   );
 }
 
-export function Edges({ edges, nodes }: { edges: [string, string][]; nodes: GraphNode[] }) {
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  return (
-    <svg className="absolute inset-0 h-full w-full" viewBox={`${-STAGE.ox} ${-STAGE.oy} ${STAGE.w} ${STAGE.h}`} aria-hidden>
-      {edges.map(([a, b]) => {
-        const p = byId.get(a);
-        const q = byId.get(b);
-        if (!p || !q) return null;
-        return <line key={`${a}-${b}`} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke="var(--edge)" strokeWidth={6} strokeLinecap="round" />;
-      })}
-    </svg>
-  );
-}
+// «Живой» граф из прототипа living-graph-ui: узлы покачиваются, отталкиваются от курсора,
+// перетаскиваются и пружиной возвращаются на место из макета
+const WANDER = 4; // амплитуда покачивания, px макета
+const CURSOR_R = 170; // радиус влияния курсора
+const CURSOR_PUSH = 14;
+const SPRING = 0.08;
+const DAMPING = 0.82;
+const DRAG_THRESHOLD = 5;
 
-export function Nodes({ nodes }: { nodes: GraphNode[] }) {
+export function LivingGraph({
+  nodes,
+  edges,
+  children,
+}: {
+  nodes: GraphNode[];
+  edges: [string, string][];
+  // Слой между связями и узлами (панель курса); получает живые позиции узлов
+  children?: (pos: (id: string) => Point | undefined) => ReactNode;
+}) {
+  const layer = useRef<HTMLDivElement>(null);
+  const bodies = useRef(new Map<string, Body>());
+  const cursor = useRef<Point | null>(null);
+  const drag = useRef<{ id: string; start: Point; from: Point; moved: boolean } | null>(null);
+  const suppressClick = useRef<string | null>(null);
+  const [, setFrame] = useState(0);
+  const nodesRef = useRef(nodes);
+  nodesRef.current = nodes;
+
+  const body = (id: string) => {
+    let b = bodies.current.get(id);
+    if (!b) {
+      b = { x: 0, y: 0, vx: 0, vy: 0, phase: Math.random() * Math.PI * 2 };
+      bodies.current.set(id, b);
+    }
+    return b;
+  };
+
+  // Координаты указателя в единицах сцены (центр пользователя = 0,0)
+  const toStage = useCallback((clientX: number, clientY: number): Point | null => {
+    const rect = layer.current?.getBoundingClientRect();
+    if (!rect || !rect.width) return null;
+    const scale = rect.width / STAGE.w;
+    return { x: (clientX - rect.left) / scale - STAGE.ox, y: (clientY - rect.top) / scale - STAGE.oy };
+  }, []);
+
+  useEffect(() => {
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let raf = 0;
+
+    const onMove = (e: PointerEvent) => {
+      const p = toStage(e.clientX, e.clientY);
+      cursor.current = e.pointerType === 'mouse' ? p : null;
+      const d = drag.current;
+      if (d && p) {
+        const dx = p.x - d.start.x;
+        const dy = p.y - d.start.y;
+        if (Math.hypot(dx, dy) > DRAG_THRESHOLD) d.moved = true;
+        const b = body(d.id);
+        b.x = d.from.x + dx;
+        b.y = d.from.y + dy;
+        b.vx = b.vy = 0;
+      }
+    };
+    const onUp = () => {
+      if (drag.current?.moved) suppressClick.current = drag.current.id;
+      drag.current = null;
+    };
+    const onLeave = () => {
+      cursor.current = null;
+    };
+
+    const tick = (now: number) => {
+      const t = now / 1000;
+      for (const n of nodesRef.current) {
+        const b = body(n.id);
+        if (drag.current?.id === n.id) continue;
+        const amp = still ? 0 : WANDER * (n.id === 'me' ? 0.5 : 1);
+        let tx = Math.sin(t * 0.6 + b.phase) * amp;
+        let ty = Math.cos(t * 0.5 + b.phase * 1.3) * amp;
+        const c = cursor.current;
+        if (c && !still) {
+          const dx = n.x + b.x - c.x;
+          const dy = n.y + b.y - c.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 1 && dist < CURSOR_R) {
+            const push = (1 - dist / CURSOR_R) * CURSOR_PUSH;
+            tx += (dx / dist) * push;
+            ty += (dy / dist) * push;
+          }
+        }
+        b.vx = (b.vx + (tx - b.x) * SPRING) * DAMPING;
+        b.vy = (b.vy + (ty - b.y) * SPRING) * DAMPING;
+        b.x += b.vx;
+        b.y += b.vy;
+      }
+      setFrame((f) => (f + 1) % 1e6);
+      raf = requestAnimationFrame(tick);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    document.documentElement.addEventListener('pointerleave', onLeave);
+    raf = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      document.documentElement.removeEventListener('pointerleave', onLeave);
+    };
+  }, [toStage]);
+
+  const live = nodes.map((n) => {
+    const b = bodies.current.get(n.id);
+    return b ? { ...n, x: n.x + b.x, y: n.y + b.y } : n;
+  });
+  const byId = new Map(live.map((n) => [n.id, n]));
+  const pos = (id: string) => byId.get(id);
+
+  const startDrag = (id: string) => (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const p = toStage(e.clientX, e.clientY);
+    if (!p) return;
+    const b = body(id);
+    drag.current = { id, start: p, from: { x: b.x, y: b.y }, moved: false };
+  };
+
+  const click = (n: GraphNode) => () => {
+    if (suppressClick.current === n.id) {
+      suppressClick.current = null;
+      return;
+    }
+    n.onClick?.();
+  };
+
   return (
-    <>
-      {nodes.map((n) => {
+    <div ref={layer} className="absolute inset-0">
+      <svg className="absolute inset-0 h-full w-full" viewBox={`${-STAGE.ox} ${-STAGE.oy} ${STAGE.w} ${STAGE.h}`} aria-hidden>
+        {edges.map(([a, b]) => {
+          const p = byId.get(a);
+          const q = byId.get(b);
+          if (!p || !q) return null;
+          return <line key={`${a}-${b}`} x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke="var(--edge)" strokeWidth={6} strokeLinecap="round" />;
+        })}
+      </svg>
+      {children?.(pos)}
+      {live.map((n) => {
         const Tag = n.onClick ? 'button' : 'div';
+        const c = cursor.current;
+        const near = c ? Math.max(0, 1 - Math.hypot(n.x - c.x, n.y - c.y) / CURSOR_R) : 0;
+        const dragging = drag.current?.id === n.id;
         return (
           <Tag
             key={n.id}
-            onClick={n.onClick}
+            onClick={click(n)}
+            onPointerDown={startDrag(n.id)}
             aria-label={n.label}
             title={n.label}
-            className={`node node-in group pointer-events-auto absolute flex items-center justify-center rounded-full transition-[transform,filter] duration-200 ${
-              n.onClick ? 'cursor-pointer hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white' : ''
-            } ${n.active ? 'ring-[3px] ring-white/80' : ''} ${n.pulse ? 'pulse-soft' : ''}`}
+            className={`node node-in group pointer-events-auto absolute flex touch-none select-none items-center justify-center rounded-full ${
+              dragging ? 'cursor-grabbing' : n.onClick ? 'cursor-pointer' : 'cursor-grab'
+            } focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white ${
+              n.active ? 'ring-[3px] ring-white/80' : ''
+            } ${n.pulse ? 'pulse-soft' : ''}`}
             style={{
               left: u(STAGE.ox + n.x),
               top: u(STAGE.oy + n.y),
               width: u(n.size),
               height: u(n.size),
-              transform: 'translate(-50%, -50%)',
+              transform: `translate(-50%, -50%) scale(${dragging ? 1.08 : 1})`,
+              filter: near > 0 ? `brightness(${1 + near * 0.18})` : undefined,
+              transition: 'transform 150ms ease-out',
               animationDelay: n.delay ? `${n.delay}ms` : undefined,
             }}
           >
@@ -71,7 +210,7 @@ export function Nodes({ nodes }: { nodes: GraphNode[] }) {
             {n.label && (
               <span
                 className={`pointer-events-none absolute left-1/2 top-full -translate-x-1/2 whitespace-nowrap font-light text-ink/80 transition-opacity ${
-                  n.showLabel ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100'
+                  n.showLabel || dragging ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100'
                 }`}
                 style={{ marginTop: u(10), fontSize: u(16), maxWidth: u(260), overflow: 'hidden', textOverflow: 'ellipsis' }}
               >
@@ -81,7 +220,7 @@ export function Nodes({ nodes }: { nodes: GraphNode[] }) {
           </Tag>
         );
       })}
-    </>
+    </div>
   );
 }
 

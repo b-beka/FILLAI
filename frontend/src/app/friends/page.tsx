@@ -1,6 +1,6 @@
 'use client';
 
-import { Edges, Nodes, Stage, type GraphNode } from '@/components/Graph';
+import { LivingGraph, Stage, type GraphNode } from '@/components/Graph';
 import { Icon, UserSolid } from '@/components/Icons';
 import { u } from '@/lib/units';
 
@@ -33,8 +33,7 @@ export default function FriendsPage() {
         Делитесь курсами и графами знаний с другом, коллегой, одноклассником.
       </p>
       <Stage>
-        <Edges edges={EDGES} nodes={NODES} />
-        <Nodes nodes={NODES} />
+        <LivingGraph nodes={NODES} edges={EDGES} />
       </Stage>
       <div
         className="panel absolute left-1/2 -translate-x-1/2 text-center text-white"

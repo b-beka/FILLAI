@@ -16,12 +16,15 @@ export interface PanelAction {
 
 export default function TrainingPanel({
   anchor,
+  from,
   title,
   subtitle,
   items,
   actions,
 }: {
   anchor: { x: number; y: number };
+  // Живая позиция узла (он покачивается и перетаскивается) — от неё идёт линия к панели
+  from?: { x: number; y: number };
   title: string;
   subtitle?: string;
   items: { icon: IconName; label: string; onClick: () => void }[];
@@ -38,7 +41,7 @@ export default function TrainingPanel({
   return (
     <>
       <svg className="training-link absolute inset-0 h-full w-full" viewBox={`${-STAGE.ox} ${-STAGE.oy} ${STAGE.w} ${STAGE.h}`} aria-hidden>
-        <line x1={anchor.x} y1={anchor.y} x2={edgeX} y2={anchor.y} stroke="var(--edge)" strokeWidth={6} strokeLinecap="round" />
+        <line x1={(from ?? anchor).x} y1={(from ?? anchor).y} x2={edgeX} y2={anchor.y} stroke="var(--edge)" strokeWidth={6} strokeLinecap="round" />
       </svg>
       <section
         className="training-panel panel node-in pointer-events-auto absolute flex flex-col text-white"

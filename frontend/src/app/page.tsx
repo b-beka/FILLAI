@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Edges, Nodes, ProgressRings, Stage, type GraphNode } from '@/components/Graph';
+import { LivingGraph, ProgressRings, Stage, type GraphNode } from '@/components/Graph';
 import { Icon, UserSolid, type IconName } from '@/components/Icons';
 import SearchBar from '@/components/SearchBar';
 import TrainingPanel from '@/components/TrainingPanel';
@@ -161,25 +161,29 @@ function Home() {
     <>
       <Stage>
         {selected && showProgress && <ProgressRings percent={progress ?? 0} />}
-        <Edges edges={edges} nodes={nodes} />
-        {selected && anchor && (
-          <TrainingPanel
-            anchor={anchor}
-            title={selected.title}
-            subtitle={modules[moduleIdx]?.title}
-            items={[
-              { icon: 'theory', label: 'Теория', onClick: () => open('theory') },
-              { icon: 'video', label: 'Видео', onClick: () => open('video') },
-              { icon: 'task', label: 'Задание', onClick: () => open('task') },
-            ]}
-            actions={[
-              { icon: 'test', label: 'Тест по модулю', onClick: () => open('test') },
-              { icon: 'trending', label: 'Прогресс', onClick: () => setShowProgress((v) => !v), active: showProgress },
-              { icon: 'link', label: copied ? 'Ссылка скопирована' : 'Поделиться ссылкой', onClick: share, active: copied },
-            ]}
-          />
-        )}
-        <Nodes nodes={nodes} />
+        <LivingGraph nodes={nodes} edges={edges}>
+          {(pos) =>
+            selected &&
+            anchor && (
+              <TrainingPanel
+                anchor={anchor}
+                from={pos(`c${selectedIdx}`)}
+                title={selected.title}
+                subtitle={modules[moduleIdx]?.title}
+                items={[
+                  { icon: 'theory', label: 'Теория', onClick: () => open('theory') },
+                  { icon: 'video', label: 'Видео', onClick: () => open('video') },
+                  { icon: 'task', label: 'Задание', onClick: () => open('task') },
+                ]}
+                actions={[
+                  { icon: 'test', label: 'Тест по модулю', onClick: () => open('test') },
+                  { icon: 'trending', label: 'Прогресс', onClick: () => setShowProgress((v) => !v), active: showProgress },
+                  { icon: 'link', label: copied ? 'Ссылка скопирована' : 'Поделиться ссылкой', onClick: share, active: copied },
+                ]}
+              />
+            )
+          }
+        </LivingGraph>
       </Stage>
 
       {pending?.error && (
