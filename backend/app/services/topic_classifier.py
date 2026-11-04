@@ -7,6 +7,9 @@ import re
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
 from app.topic_icons import FALLBACK_ICON, GENERAL_SPHERE, ICON_NAMES
 
 logger = logging.getLogger(__name__)
@@ -116,3 +119,68 @@ async def classify_topic(
     except Exception:
         logger.exception("Не удалось определить сферу курса %r", title)
         return TopicPlacement(GENERAL_SPHERE, FALLBACK_ICON, title[:MAX_LABEL_LEN], FALLBACK_ICON)
+
+
+def _find_child(db: Session, parent_id, label: str):
+    """Ищет категорию среди соседей по нормализованному названию"""
+    from app.db_models import Category
+
+    query = db.query(Category)
+    query = query.filter(Category.parent_id.is_(None)) if parent_id is None else query.filter(Category.parent_id == parent_id)
+    wanted = normalize_label(label)
+    for category in query.order_by(Category.created_at, Category.label).all():
+        if normalize_label(category.label) == wanted:
+            return category
+    return None
+
+
+def _get_or_create(db: Session, parent_id, label: str, icon: str):
+    """Находит категорию или создаёт; гонку двух вставок гасит уникальный индекс"""
+    from app.db_models import Category
+
+    found = _find_child(db, parent_id, label)
+    if found:
+        return found
+    try:
+        # Savepoint: при конфликте откатывается только вставка, а не вся транзакция курса
+        with db.begin_nested():
+            category = Category(label=_clean_label(label), parent_id=parent_id, icon=icon)
+            db.add(category)
+            db.flush()
+        return category
+    except IntegrityError:
+        found = _find_child(db, parent_id, label)
+        if found:
+            return found
+        raise
+
+
+def known_tree(db: Session) -> dict[str, list[str]]:
+    """Существующие сферы и их подтемы: {сфера: [подтемы]}"""
+    from app.db_models import Category
+
+    spheres = db.query(Category).filter(Category.parent_id.is_(None)).order_by(Category.label).all()
+    return {
+        sphere.label: sorted(child.label for child in sphere.children)
+        for sphere in spheres
+    }
+
+
+def resolve_category(db: Session, placement: TopicPlacement):
+    """Возвращает подтему из размещения; сферу и подтему создаёт при необходимости"""
+    sphere = _get_or_create(db, None, placement.sphere, placement.sphere_icon)
+    return _get_or_create(db, sphere.id, placement.subtopic, placement.subtopic_icon)
+
+
+async def place_course(db: Session, title: str):
+    """Категория для нового курса. Любая ошибка — сфера «Общее», курс не теряется"""
+    try:
+        placement = await classify_topic(title, known_tree(db))
+        return resolve_category(db, placement)
+    except Exception:
+        logger.exception("Не удалось привязать курс %r к дереву категорий", title)
+        try:
+            return _get_or_create(db, None, GENERAL_SPHERE, FALLBACK_ICON)
+        except Exception:
+            logger.exception("Не удалось создать сферу %r", GENERAL_SPHERE)
+            return None

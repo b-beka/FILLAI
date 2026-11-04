@@ -287,22 +287,11 @@ async def generate_course(
         import uuid
         from app.db_models import Course, CourseModule, Lesson, Category, Enrollment, Tag
         
-        # 1. Handle Category
-        # Try to find existing category by label or ID
-        category_name = generated_course.category
-        db_category = db.query(Category).filter(Category.label == category_name).first()
-        if not db_category:
-            # Try by ID if it looks like a stripped string
-            cat_id_candidate = category_name.lower().replace(" ", "-")
-            # Just create new one if not found, to be safe
-            db_category = Category(
-                id=uuid.uuid4(),
-                label=category_name,
-                description=f"Generated category for {category_name}"
-            )
-            db.add(db_category)
-            db.flush()
-            
+        # 1. Сфера и подтема курса (при сбое - сфера «Общее»)
+        from app.services.topic_classifier import place_course
+        db_category = await place_course(db, generated_course.title)
+        category_id = db_category.id if db_category else None
+
         # 2. Create Course
         course_id = uuid.uuid4() # Generated proper UUID
         
@@ -310,7 +299,7 @@ async def generate_course(
             id=course_id,
             title=generated_course.title,
             description=generated_course.description,
-            category_id=db_category.id,
+            category_id=category_id,
             created_by=current_user.id,
             format="Онлайн", # Default
             level=generated_course.difficulty.value,

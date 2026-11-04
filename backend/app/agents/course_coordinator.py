@@ -91,7 +91,7 @@ class CourseCoordinator:
             total_duration += module.duration_hours
         
         # 5. Сборка курса
-        category = settings.custom_category_name or self._determine_category(settings.title)
+        category = settings.custom_category_name or "Общее"
         
         return Course(
             id=self._generate_course_id(settings.title),
@@ -217,20 +217,6 @@ class CourseCoordinator:
         
         return "\n".join(md)
 
-    
-    def _determine_category(self, title: str) -> str:
-        """Определяет категорию курса на основе названия"""
-        title_lower = title.lower()
-        if any(word in title_lower for word in ["английский", "english", "язык", "language"]):
-            return "Языки"
-        elif any(word in title_lower for word in ["программирование", "coding", "python", "javascript"]):
-            return "Программирование"
-        elif any(word in title_lower for word in ["математика", "math", "физика", "physics"]):
-            return "Наука"
-        elif any(word in title_lower for word in ["дизайн", "design", "графика"]):
-            return "Дизайн"
-        else:
-            return "Общее"
     
     def _generate_course_id(self, title: str) -> str:
         return str(uuid.uuid4())
