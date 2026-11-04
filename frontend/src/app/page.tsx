@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { LivingGraph, ProgressRings, Stage, type GraphNode } from '@/components/Graph';
-import { Icon, UserSolid, type IconName } from '@/components/Icons';
+import { Icon, UserSolid } from '@/components/Icons';
 import ArrowFlight from '@/components/ArrowFlight';
 import SearchBar from '@/components/SearchBar';
 import TrainingPanel from '@/components/TrainingPanel';
@@ -29,22 +29,11 @@ function slot(i: number) {
   return { x: Math.cos(angle) * 200, y: Math.sin(angle) * 200 };
 }
 
-// Пустой граф (кадр «MacBook Pro 16 - 5») — подсказки тем из презентации
-const SUGGESTIONS: { topic: string; icon: IconName }[] = [
-  { topic: 'Тренировки: теория, видео, задание', icon: 'dumbbell' },
-  { topic: 'Английский язык', icon: 'globe' },
-  { topic: 'Основы дизайна интерфейсов', icon: 'sparkles' },
-];
-
 const MAX_COURSES = 24;
 const MAX_MODULES = 6;
 
 function sortedModules(c: Course) {
   return (c.modules ?? []).slice().sort((a, b) => a.order - b.order).slice(0, MAX_MODULES);
-}
-
-function branchIcon(icon: IconName) {
-  return <Icon name={icon} size={u(icon === 'globe' ? 40 : 31)} strokeWidth={1.3} />;
 }
 
 // Иконка узла дерева; размер глифа — доля от размера узла
@@ -136,13 +125,6 @@ function Home() {
     { id: 'me', x: 0, y: 0, size: 100, content: <UserSolid size={u(46)} />, label: user ? user.full_name || user.username : 'Вы', showLabel: true },
   ];
   const edges: [string, string][] = [];
-
-  if (visible.length === 0 && !pending) {
-    SUGGESTIONS.forEach((s, i) => {
-      nodes.push({ id: `s${i}`, ...slot(i), size: 80, content: branchIcon(s.icon), label: s.topic, onClick: () => setTopic(s.topic), delay: 80 * i });
-      edges.push(['me', `s${i}`]);
-    });
-  }
 
   // Дерево: вы → сфера → подтема → курс → модули. Подтема с одним курсом узла не получает
   tree.forEach((sp, si) => {
