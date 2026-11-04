@@ -1,7 +1,7 @@
 """Агент для генерации контента различных типов опыта (Experience Types)"""
 from typing import Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
+from app.agents.llm import make_llm
 import json
 import os
 from app.models import ExperienceType
@@ -12,7 +12,7 @@ class ExperienceAgent:
     def __init__(self, model_name: str = None, temperature: float = 0.7):
         if model_name is None:
             model_name = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-        self.llm = ChatOpenAI(model=model_name, temperature=temperature)
+        self.llm = make_llm(model_name, temperature)
         
         # --- PROMPTS ---
         

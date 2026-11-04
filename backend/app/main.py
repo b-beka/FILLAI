@@ -91,6 +91,7 @@ from app.models import (
     ClarifyingQuestionsRequest,
     ClarifyingQuestionsResponse,
 )
+from openai import APITimeoutError
 from app.agents.course_coordinator import CourseCoordinator
 from app.agents.grading_agent import ExerciseGradingAgent
 from app.agents.assistant_agent import PersonalAssistantAgent
@@ -413,6 +414,8 @@ async def generate_course(
             error_msg = f"Модель '{current_model}' недоступна. Проверьте OPENAI_MODEL в .env файле. Попробуйте: gpt-3.5-turbo, gpt-4o, gpt-4o-mini"
         elif "api key" in error_msg.lower() or "authentication" in error_msg.lower():
             error_msg = "Неверный API ключ. Проверьте OPENAI_API_KEY в .env файле."
+        elif isinstance(e, (TimeoutError, APITimeoutError)) or "timed out" in error_msg.lower():
+            error_msg = "Модель не ответила вовремя. Попробуйте ещё раз через минуту."
         elif "429" in error_msg or "rate limit" in error_msg.lower():
             error_msg = "Достигнут лимит запросов к ИИ-провайдеру. Подождите несколько минут и попробуйте снова."
         
