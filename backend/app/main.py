@@ -113,14 +113,14 @@ app = FastAPI(
 
 logger.info(f"Starting Fill AI API in {ENVIRONMENT} mode")
 
-# Без ключа сервер работает (вход, библиотека), но курсы не генерируются — предупреждаем громко
+# Ключ OpenRouter или OpenAI. Без ключа сервер работает (вход, библиотека), но курсы не генерируются — предупреждаем громко
 ENV_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
 if not os.getenv("OPENAI_API_KEY", "").strip():
     logger.warning(
         "\n" + "=" * 64 +
         "\n  OPENAI_API_KEY НЕ ЗАДАН — генерация курсов отключена."
         f"\n  Откройте файл: {ENV_FILE}"
-        "\n  Впишите ключ в строку  OPENAI_API_KEY=sk-...  и перезапустите бэкенд."
+        "\n  Впишите ключ OpenRouter в строку  OPENAI_API_KEY=sk-or-...  и перезапустите бэкенд."
         "\n" + "=" * 64
     )
 
@@ -414,7 +414,7 @@ async def generate_course(
             current_model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
             error_msg = f"Модель '{current_model}' недоступна. Проверьте OPENAI_MODEL в .env файле. Попробуйте: gpt-3.5-turbo, gpt-4o, gpt-4o-mini"
         elif "api key" in error_msg.lower() or "authentication" in error_msg.lower():
-            error_msg = "Неверный API ключ OpenAI. Проверьте OPENAI_API_KEY в .env файле."
+            error_msg = "Неверный API ключ. Проверьте OPENAI_API_KEY в .env файле."
         
         return CourseGenerationResponse(
             success=False,

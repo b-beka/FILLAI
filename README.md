@@ -32,11 +32,11 @@ uvicorn app.main:app --reload --port 8000
 
 Без `OPENAI_API_KEY` работает всё, кроме генерации курсов и AI-проверки.
 
-> **Куда вписать ключ OpenAI:** файл `backend/.env` (на Windows — `C:\fill-ai\FillAI-official\backend\.env`),
-> строка `OPENAI_API_KEY=` — над ней есть заметный блок-комментарий. Файл начинается с точки,
+> **Куда вписать ключ AI (OpenRouter или OpenAI):** файл `backend/.env` (на Windows — `C:\fill-ai\FillAI-official\backend\.env`),
+> строка `OPENAI_API_KEY=` (для OpenRouter ещё `OPENAI_BASE_URL=https://openrouter.ai/api/v1`) — над ней есть заметный блок-комментарий. Файл начинается с точки,
 > поэтому проводник может его скрывать: откройте через VS Code или `notepad backend\.env`.
 > После сохранения перезапустите бэкенд — `--reload` не следит за `.env`.
-На сервере укажите `DATABASE_URL=postgresql://…` и выполните `alembic upgrade head`.
+Для Supabase или своего Postgres укажите `DATABASE_URL=postgresql+psycopg2://…` (драйвер — обязательно явно) и выполните `alembic upgrade head`. На новых таблицах включайте RLS: схема `public` в Supabase доступна через REST API.
 
 Создать пользователя без письма-подтверждения (пароль спросит в терминале):
 
