@@ -11,7 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { useCourses } from '@/lib/courses';
 import { iconFor } from '@/lib/course';
 import { TopicIcon } from '@/lib/topicIcons';
-import { buildTree } from '@/lib/tree';
+import { buildTree, fanOut } from '@/lib/tree';
 import { u } from '@/lib/units';
 
 // Стартовые позиции веток — из макета: тренировки (141, 94), языки (−151, 77), дизайн (51, −163).
@@ -152,10 +152,8 @@ function Home() {
       st.courses.forEach((c, ci) => {
         const id = `c-${c.id}`;
         const n = st.courses.length;
-        const angle = stAngle + (ci - (n - 1) / 2) * 0.6;
-        const at = nested
-          ? { x: parentAt.x + Math.cos(angle) * 100, y: parentAt.y + Math.sin(angle) * 100 }
-          : stAt;
+        // Каждый курс получает свою стартовую точку веером, чтобы узлы не слипались
+        const at = nested ? fanOut(stAt, stAngle, ci, n, 100) : fanOut(spAt, stAngle, ci, n, 120);
         const size = nested ? 64 : 80;
         const isSelected = selected?.id === c.id;
         nodes.push({

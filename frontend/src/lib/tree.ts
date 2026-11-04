@@ -43,3 +43,9 @@ export function buildTree(courses: Course[]): SphereGroup[] {
 
   return Array.from(spheres.values());
 }
+
+// Точка веера: index из count вокруг center на расстоянии radius, середина веера смотрит под углом baseAngle
+export function fanOut(center: { x: number; y: number }, baseAngle: number, index: number, count: number, radius: number, step = 0.6) {
+  const angle = baseAngle + (index - (count - 1) / 2) * step;
+  return { x: center.x + Math.cos(angle) * radius, y: center.y + Math.sin(angle) * radius };
+}
