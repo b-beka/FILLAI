@@ -56,3 +56,22 @@ async def test_sphere_mapped_to_existing_key():
         return '{"sphere":" ЯЗЫКИ ","sphere_icon":"globe","subtopic":"Казахский","subtopic_icon":"book"}'
     p = await classify_topic("Казахский", {"Языки": []}, complete=fake)
     assert p.sphere == "Языки"
+
+
+@pytest.mark.asyncio
+async def test_place_course_rolls_back_on_database_error(db, monkeypatch):
+    from sqlalchemy.exc import OperationalError
+
+    from app.services import topic_classifier
+
+    def broken(_db):
+        raise OperationalError("SELECT", {}, Exception("connection dropped"))
+
+    calls = []
+    real_rollback = db.rollback
+    monkeypatch.setattr(topic_classifier, "known_tree", broken)
+    monkeypatch.setattr(db, "rollback", lambda: (calls.append("rollback"), real_rollback())[1])
+
+    category = await topic_classifier.place_course(db, "Основы Git")
+    assert calls == ["rollback"]
+    assert category is not None and category.label == "Общее"

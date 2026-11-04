@@ -24,7 +24,7 @@ export interface LessonContent {
 }
 
 // Поля «опытов» (experience_agent), которые можно показать как текст
-const TEXT_FIELDS = ['content', 'concept_explanation', 'scenario', 'situation', 'context', 'description_for_ai', 'observation_task', 'expected_insight'];
+const TEXT_FIELDS = ['content', 'concept_explanation', 'scenario', 'situation', 'context', 'description_for_ai', 'observation_task', 'expected_insight', 'raw_content'];
 const LIST_FIELDS = ['key_points', 'analysis_questions', 'discussion_points', 'documents'];
 
 export function parseLesson(lesson: Lesson): LessonContent {

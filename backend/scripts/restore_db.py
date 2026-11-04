@@ -2,7 +2,8 @@
 
     python -m scripts.restore_db backups/<файл>.json.gz --yes
 
-Работает только с ПУСТОЙ базой (таблицы уже созданы миграциями, строк нет):
+Работает только с ПУСТОЙ базой (таблицы уже созданы миграциями, строк нет; засеянные
+миграциями сферы без курсов и подтем не считаются, их копия заменяет):
 существующие данные не перезаписываются. Флаг --yes обязателен.
 """
 import argparse
@@ -65,9 +66,21 @@ def restore(engine: Engine, path: Path) -> dict[str, int]:
     counts: dict[str, int] = {}
     # Одна транзакция: при любой ошибке в базе не остаётся половины данных
     with engine.begin() as conn:
+        categories = Base.metadata.tables["categories"]
         for table in Base.metadata.sorted_tables:
+            if table is categories:
+                continue
             if conn.execute(select(func.count()).select_from(table)).scalar():
                 raise ValueError(f"База не пуста: в таблице {table.name} есть строки")
+
+        # Миграции засевают сферы (категории без родителя). Если кроме них ничего нет
+        # (курсов нет - проверено выше), убираем их, иначе копия задвоит сферы. Подтемы - данные пользователя.
+        has_children = conn.execute(
+            select(func.count()).select_from(categories).where(categories.c.parent_id.is_not(None))
+        ).scalar()
+        if has_children:
+            raise ValueError("База не пуста: в таблице categories есть подтемы")
+        conn.execute(categories.delete())
 
         for table in Base.metadata.sorted_tables:
             rows = payload["tables"].get(table.name, [])

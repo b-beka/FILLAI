@@ -65,6 +65,48 @@ def test_restore_refuses_non_empty_database(tmp_path):
         assert conn.execute(select(func.count()).select_from(User.__table__)).scalar() == 1
 
 
+def _seed_spheres(engine, with_child=False):
+    from app.db_models import Category
+
+    with sessionmaker(bind=engine)() as s:
+        spheres = [Category(label=f"Сфера {i}") for i in range(7)]
+        s.add_all(spheres)
+        s.flush()
+        if with_child:
+            s.add(Category(label="Подтема", parent_id=spheres[0].id))
+        s.commit()
+
+
+def test_restore_into_migrated_db_replaces_seeded_spheres(tmp_path):
+    from app.db_models import Category
+
+    src = _make_engine(tmp_path / "src.db")
+    _seed(src)
+    path = backup(src, tmp_path / "out")
+
+    dst = _make_engine(tmp_path / "dst.db")
+    _seed_spheres(dst)
+    counts = restore(dst, path)
+    assert counts["users"] == 1
+    with dst.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(Category.__table__)).scalar() == 0
+
+
+def test_restore_refuses_when_subtopics_exist(tmp_path):
+    from app.db_models import Category
+
+    src = _make_engine(tmp_path / "src.db")
+    _seed(src)
+    path = backup(src, tmp_path / "out")
+
+    dst = _make_engine(tmp_path / "dst.db")
+    _seed_spheres(dst, with_child=True)
+    with pytest.raises(ValueError):
+        restore(dst, path)
+    with dst.connect() as conn:
+        assert conn.execute(select(func.count()).select_from(Category.__table__)).scalar() == 8
+
+
 def test_health_reports_db(client):
     data = client.get("/health").json()
     assert data["db"] is True

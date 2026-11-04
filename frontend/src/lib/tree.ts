@@ -17,16 +17,27 @@ export interface SphereGroup {
 
 const GENERAL = { key: 'general', label: 'Общее', icon: 'book' };
 
-// Порядок сфер и подтем — по первому появлению курса, чтобы граф не прыгал
+// Сфера курса: родитель категории или сама категория без родителя (это и есть сфера)
+function sphereOf(course: Course) {
+  const cat = course.category ?? null;
+  if (!cat) return null;
+  const src = cat.parent ?? cat;
+  return { key: src.id, label: src.label, icon: src.icon || 'book' };
+}
+
+// Порядок сфер и подтем — по первому появлению курса, чтобы граф не прыгал.
+// /my отдаёт новые курсы первыми, поэтому идём от старых к новым
 export function buildTree(courses: Course[]): SphereGroup[] {
   const spheres = new Map<string, SphereGroup>();
+  const ordered = [...courses].sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+  // Курсы без категории идут в настоящую сферу «Общее», если она уже есть в дереве
+  const general = ordered.map(sphereOf).find((s) => s?.label === GENERAL.label) ?? GENERAL;
 
-  for (const course of courses) {
+  for (const course of ordered) {
     const cat = course.category ?? null;
-    // Категория без родителя — старые данные: курс кладём в «Общее», подтема — сама категория
-    const parent = cat?.parent ?? null;
-    const sphereSrc = parent ? { key: parent.id, label: parent.label, icon: parent.icon || 'book' } : GENERAL;
-    const subSrc = cat ? { key: cat.id, label: cat.label, icon: cat.icon || 'book' } : GENERAL;
+    const sphereSrc = sphereOf(course) ?? general;
+    // Курс на сфере или без категории лежит прямо под сферой: ключ подтемы совпадает с ключом сферы
+    const subSrc = cat?.parent ? { key: cat.id, label: cat.label, icon: cat.icon || 'book' } : sphereSrc;
 
     let sphere = spheres.get(sphereSrc.key);
     if (!sphere) {

@@ -179,6 +179,11 @@ async def place_course(db: Session, title: str):
         return resolve_category(db, placement)
     except Exception:
         logger.exception("Не удалось привязать курс %r к дереву категорий", title)
+        # Сбой мог оборвать транзакцию (упавшее соединение): без отката следующий запрос тоже упадёт
+        try:
+            db.rollback()
+        except Exception:
+            logger.exception("Не удалось откатить транзакцию")
         try:
             return _get_or_create(db, None, GENERAL_SPHERE, FALLBACK_ICON)
         except Exception:

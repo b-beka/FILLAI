@@ -85,6 +85,12 @@ export function LivingGraph({
       alpha.current = Math.max(alpha.current, 0.6);
     }
   }
+  // Исчезнувшие узлы (например, pending после генерации) убираем: иначе второй курс
+  // за сессию встанет на старое тело, и симуляция не проснётся
+  if (bodies.current.size > nodes.length) {
+    const live = new Set(nodes.map((n) => n.id));
+    for (const id of Array.from(bodies.current.keys())) if (!live.has(id)) bodies.current.delete(id);
+  }
 
   // Указатель → координаты сцены (центр пользователя = 0,0, без учёта зума)
   const toStage = useCallback((clientX: number, clientY: number): Point | null => {

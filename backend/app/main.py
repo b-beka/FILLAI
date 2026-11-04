@@ -216,7 +216,7 @@ async def root():
 
 
 @app.get("/health")
-async def health_check(db: Session = Depends(get_db)):
+def health_check(db: Session = Depends(get_db)):
     """Проверка здоровья сервиса"""
     # Короткий настоящий запрос; текст ошибки наружу не отдаём (в нём может быть адрес базы)
     try:
@@ -423,6 +423,9 @@ async def generate_course(
             error_msg = "Неверный API ключ. Проверьте OPENAI_API_KEY в .env файле."
         elif isinstance(e, (TimeoutError, APITimeoutError)) or "timed out" in error_msg.lower():
             error_msg = "Модель не ответила вовремя. Попробуйте ещё раз через минуту."
+        elif "per-day" in error_msg.lower() or "per_day" in error_msg.lower():
+            # у бесплатных моделей OpenRouter есть суточный лимит: ждать минуты бесполезно
+            error_msg = "Дневной лимит бесплатной модели исчерпан, попробуйте завтра."
         elif "429" in error_msg or "rate limit" in error_msg.lower():
             error_msg = "Достигнут лимит запросов к ИИ-провайдеру. Подождите несколько минут и попробуйте снова."
         

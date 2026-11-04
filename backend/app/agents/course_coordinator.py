@@ -14,6 +14,8 @@ from app.models import (
 )
 import asyncio
 import json
+
+import openai
 import uuid
 
 class CourseCoordinator:
@@ -75,7 +77,14 @@ class CourseCoordinator:
             generate_tasks.append((module_data, task))
             
         # Выполнение задач
-        results = await asyncio.gather(*[t for _, t in generate_tasks])
+        # TaskGroup отменяет соседние модули при первой ошибке, чтобы они не тратили квоту модели
+        try:
+            async with asyncio.TaskGroup() as group:
+                running = [group.create_task(t) for _, t in generate_tasks]
+        except ExceptionGroup as eg:
+            # наружу отдаём саму ошибку, а не группу: main.py разбирает её по типу
+            raise eg.exceptions[0] from None
+        results = [t.result() for t in running]
         
         for (module_data, _), lessons_list in zip(generate_tasks, results):
             module_title = module_data.get("title", "Модуль")
@@ -158,6 +167,9 @@ class CourseCoordinator:
                     
                     if "images" in materials:
                         images = materials["images"]
+            except (openai.APIError, asyncio.TimeoutError):
+                # сбой провайдера - это не «нет видео», курс без контента сохранять нельзя
+                raise
             except Exception as e:
                 print(f"Error finding videos for lesson {l_title}: {e}")
             

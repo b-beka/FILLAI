@@ -16,10 +16,33 @@ describe('buildTree', () => {
     expect(buildTree([c('a', null)])[0].label).toBe('Общее');
   });
 
-  it('категория без родителя считается сферой в Общем не теряя курс', () => {
+  it('категория без родителя - отдельная сфера, курс прямо под ней', () => {
     const t = buildTree([c('a', { id: 'x', label: 'Старая' })]);
-    expect(t[0].label).toBe('Общее');
+    expect(t).toHaveLength(1);
+    expect(t[0].label).toBe('Старая');
+    expect(t[0].subtopics[0].key).toBe(t[0].key);
     expect(t[0].subtopics[0].courses[0].id).toBe('a');
+  });
+
+  it('курс без категории и настоящая сфера Общее дают один узел Общее', () => {
+    const t = buildTree([c('a', null), c('b', { id: 'g', label: 'Общее' })]);
+    expect(t.filter((s) => s.label === 'Общее')).toHaveLength(1);
+    expect(t).toHaveLength(1);
+    expect(t[0].subtopics.flatMap((s) => s.courses.map((x) => x.id)).sort()).toEqual(['a', 'b']);
+  });
+
+  it('курс на строке сферы Языки показывается под Языки', () => {
+    const t = buildTree([c('a', { id: 'l', label: 'Языки', icon: 'globe' })]);
+    expect(t.map((s) => s.label)).toEqual(['Языки']);
+    expect(t[0].subtopics[0].courses[0].id).toBe('a');
+  });
+
+  it('порядок сфер стабилен: идём от старых курсов к новым', () => {
+    const dated = (id: string, at: string, cat: CategoryBrief) => ({ ...c(id, cat), created_at: at }) as Course;
+    const phys = { id: 'p', label: 'Физика' };
+    // как отдаёт /my: новые первыми
+    const t = buildTree([dated('new', '2026-02-01', phys), dated('old', '2026-01-01', lang)]);
+    expect(t.map((s) => s.label)).toEqual(['Языки', 'Физика']);
   });
 
   it('несколько курсов одной подтемы остаются в ней', () => {
