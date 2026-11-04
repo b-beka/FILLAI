@@ -1,9 +1,10 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { LivingGraph, ProgressRings, Stage, type GraphNode } from '@/components/Graph';
 import { Icon, UserSolid, type IconName } from '@/components/Icons';
+import ArrowFlight from '@/components/ArrowFlight';
 import SearchBar from '@/components/SearchBar';
 import TrainingPanel from '@/components/TrainingPanel';
 import { api, type Course, type Level } from '@/lib/api';
@@ -61,6 +62,9 @@ function Home() {
   const [progress, setProgress] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const [aiReady, setAiReady] = useState(true);
+  // Прямоугольник стрелки, пока она летит в граф; узел pending на это время скрыт
+  const [flight, setFlight] = useState<DOMRect | null>(null);
+  const submitting = useRef(false);
 
   // Нет ключа AI — сразу говорим, куда его вписать, а не после неудачной генерации
   useEffect(() => {
@@ -96,14 +100,35 @@ function Home() {
 
   const select = (id: string | null, m = 0) => router.replace(id ? `/?course=${id}${m ? `&m=${m}` : ''}` : '/', { scroll: false });
 
-  const onSubmit = async (t: string, level: Level, files: { name: string; content: string }[]) => {
+  // Страховка: полёт не может зависнуть и держать узел скрытым дольше 1500 мс
+  useEffect(() => {
+    if (!flight) return;
+    const t = setTimeout(() => setFlight(null), 1500);
+    return () => clearTimeout(t);
+  }, [flight]);
+
+  // Генерация кончилась (узла больше нет) — лететь некуда
+  useEffect(() => {
+    if (!pending) setFlight(null);
+  }, [pending]);
+
+  const onSubmit = async (t: string, level: Level, files: { name: string; content: string }[], from: DOMRect | null) => {
     if (!user) {
       router.push(`/login?topic=${encodeURIComponent(t)}`);
       return;
     }
+    if (submitting.current) return; // двойной клик — один полёт и один запрос
+    submitting.current = true;
+    const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // Ставим полёт в том же такте, что и generate (он выставляет pending): узел не мигнёт
+    if (from && !still) setFlight(from);
     setTopic('');
-    const id = await generate(t, level, files);
-    if (id) select(id);
+    try {
+      const id = await generate(t, level, files);
+      if (id) select(id);
+    } finally {
+      submitting.current = false;
+    }
   };
 
   // Узлы графа: вы → сферы → подтемы → курсы → модули
@@ -147,7 +172,6 @@ function Home() {
         edges.push([spId, stId]);
       }
       const parentId = nested ? stId : spId;
-      const parentAt = nested ? stAt : spAt;
 
       st.courses.forEach((c, ci) => {
         const id = `c-${c.id}`;
@@ -202,6 +226,7 @@ function Home() {
       label: pending.error ? 'Ошибка' : 'Собираю курс…',
       showLabel: true,
       pulse: !pending.error,
+      hidden: !!flight,
     });
     edges.push(['me', 'pending']);
   }
@@ -228,8 +253,9 @@ function Home() {
           {(pos) => {
             const anchor = selected && pos(`c-${selected.id}`);
             return (
-              selected &&
-              anchor && (
+              <>
+                {flight && <ArrowFlight from={flight} to={pos('pending')} onDone={() => setFlight(null)} />}
+                {selected && anchor && (
                 <TrainingPanel
                   anchor={anchor}
                   from={anchor}
@@ -246,7 +272,8 @@ function Home() {
                     { icon: 'link', label: copied ? 'Ссылка скопирована' : 'Поделиться ссылкой', onClick: share, active: copied },
                   ]}
                 />
-              )
+                )}
+              </>
             );
           }}
         </LivingGraph>
