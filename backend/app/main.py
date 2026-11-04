@@ -101,6 +101,7 @@ from app.dependencies import check_generation_limit, increment_generation_count
 from app.database import get_db
 from app.db_models import User
 from fastapi import Depends
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 app = FastAPI(
@@ -210,12 +211,20 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
+async def health_check(db: Session = Depends(get_db)):
     """Проверка здоровья сервиса"""
+    # Короткий настоящий запрос; текст ошибки наружу не отдаём (в нём может быть адрес базы)
+    try:
+        db.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        logger.error("Проверка базы в /health не прошла", exc_info=True)
+        db_ok = False
     return {
-        "status": "healthy",
+        "status": "healthy" if db_ok else "degraded",
         "service": "course-generation-api",
         "ai_ready": bool(os.getenv("OPENAI_API_KEY", "").strip()),
+        "db": db_ok,
     }
 
 
@@ -404,6 +413,8 @@ async def generate_course(
             error_msg = f"Модель '{current_model}' недоступна. Проверьте OPENAI_MODEL в .env файле. Попробуйте: gpt-3.5-turbo, gpt-4o, gpt-4o-mini"
         elif "api key" in error_msg.lower() or "authentication" in error_msg.lower():
             error_msg = "Неверный API ключ. Проверьте OPENAI_API_KEY в .env файле."
+        elif "429" in error_msg or "rate limit" in error_msg.lower():
+            error_msg = "Достигнут лимит запросов к ИИ-провайдеру. Подождите несколько минут и попробуйте снова."
         
         return CourseGenerationResponse(
             success=False,
