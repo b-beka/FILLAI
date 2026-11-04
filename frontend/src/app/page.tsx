@@ -10,6 +10,8 @@ import { api, type Course, type Level } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useCourses } from '@/lib/courses';
 import { iconFor } from '@/lib/course';
+import { TopicIcon } from '@/lib/topicIcons';
+import { buildTree } from '@/lib/tree';
 import { u } from '@/lib/units';
 
 // Стартовые позиции веток — из макета: тренировки (141, 94), языки (−151, 77), дизайн (51, −163).
@@ -44,6 +46,11 @@ function branchIcon(icon: IconName) {
   return <Icon name={icon} size={u(icon === 'globe' ? 40 : 31)} strokeWidth={1.3} />;
 }
 
+// Иконка узла дерева; размер глифа — доля от размера узла
+function topicIcon(name: string, size: number) {
+  return <TopicIcon name={name} size={u(Math.round(size * 0.4))} strokeWidth={1.3} />;
+}
+
 function Home() {
   const router = useRouter();
   const params = useSearchParams();
@@ -62,8 +69,9 @@ function Home() {
 
   const selectedId = params?.get('course');
   const moduleIdx = Number(params?.get('m') || 0);
-  const visible = courses.slice(0, MAX_COURSES);
+  const visible = useMemo(() => courses.slice(0, MAX_COURSES), [courses]);
   const selected = visible.find((c) => c.id === selectedId) ?? null;
+  const tree = useMemo(() => buildTree(visible), [visible]);
   const modules = useMemo(() => (selected ? sortedModules(selected) : []), [selected]);
 
   // Тема, введённая до входа в аккаунт (см. /login?topic=)
@@ -98,7 +106,7 @@ function Home() {
     if (id) select(id);
   };
 
-  // Узлы графа: вы → курсы → модули
+  // Узлы графа: вы → сферы → подтемы → курсы → модули
   const nodes: GraphNode[] = [
     { id: 'me', x: 0, y: 0, size: 100, content: <UserSolid size={u(46)} />, label: user ? user.full_name || user.username : 'Вы', showLabel: true },
   ];
@@ -111,50 +119,88 @@ function Home() {
     });
   }
 
-  visible.forEach((c, i) => {
-    const id = `c-${c.id}`;
-    const at = slot(i);
-    const isSelected = selected?.id === c.id;
+  // Дерево: вы → сфера → подтема → курс → модули. Подтема с одним курсом узла не получает
+  tree.forEach((sp, si) => {
+    const spId = `sp-${sp.key}`;
+    const spAt = slot(si);
     nodes.push({
-      id,
-      ...at,
+      id: spId,
+      ...spAt,
       size: 80,
-      content: branchIcon(iconFor(c.title)),
-      label: c.title,
+      content: topicIcon(sp.icon, 80),
+      label: sp.label,
       showLabel: true,
-      active: isSelected,
-      onClick: () => select(isSelected ? null : c.id),
-      delay: 40 * i,
+      delay: 40 * si,
     });
-    edges.push(['me', id]);
+    edges.push(['me', spId]);
 
-    // Модули — листья вокруг курса, наружу от центра
-    const ms = sortedModules(c);
-    const base = Math.atan2(at.y, at.x);
-    ms.forEach((m, j) => {
-      const angle = base + (j - (ms.length - 1) / 2) * 0.55;
-      const mid = `m-${m.id}`;
-      nodes.push({
-        id: mid,
-        x: at.x + Math.cos(angle) * 115,
-        y: at.y + Math.sin(angle) * 115,
-        size: 52,
-        content: <span style={{ fontSize: u(17) }}>{j + 1}</span>,
-        label: m.title,
-        active: isSelected && j === moduleIdx,
-        onClick: () => select(c.id, j),
-        delay: 40 * i + 30 * j,
+    const spBase = Math.atan2(spAt.y, spAt.x);
+    // Подтемы и курсы без подтемы — веером наружу от центра
+    const kids = sp.subtopics.length;
+    sp.subtopics.forEach((st, ti) => {
+      const nested = st.courses.length > 1 && st.key !== sp.key;
+      const stAngle = spBase + (ti - (kids - 1) / 2) * 0.7;
+      const stAt = { x: spAt.x + Math.cos(stAngle) * 120, y: spAt.y + Math.sin(stAngle) * 120 };
+      const stId = `st-${st.key}`;
+      if (nested) {
+        nodes.push({ id: stId, ...stAt, size: 64, content: topicIcon(st.icon, 64), label: st.label, showLabel: true, delay: 40 * si + 30 * ti });
+        edges.push([spId, stId]);
+      }
+      const parentId = nested ? stId : spId;
+      const parentAt = nested ? stAt : spAt;
+
+      st.courses.forEach((c, ci) => {
+        const id = `c-${c.id}`;
+        const n = st.courses.length;
+        const angle = stAngle + (ci - (n - 1) / 2) * 0.6;
+        const at = nested
+          ? { x: parentAt.x + Math.cos(angle) * 100, y: parentAt.y + Math.sin(angle) * 100 }
+          : stAt;
+        const size = nested ? 64 : 80;
+        const isSelected = selected?.id === c.id;
+        nodes.push({
+          id,
+          ...at,
+          size,
+          content: topicIcon(st.icon, size),
+          label: c.title,
+          showLabel: true,
+          active: isSelected,
+          onClick: () => select(isSelected ? null : c.id),
+          delay: 40 * si + 30 * ti + 20 * ci,
+        });
+        edges.push([parentId, id]);
+
+        // Модули — листья вокруг выбранного курса, наружу от центра
+        if (!isSelected) return;
+        const ms = sortedModules(c);
+        const mBase = Math.atan2(at.y, at.x);
+        ms.forEach((m, j) => {
+          const mAngle = mBase + (j - (ms.length - 1) / 2) * 0.55;
+          const mid = `m-${m.id}`;
+          nodes.push({
+            id: mid,
+            x: at.x + Math.cos(mAngle) * 105,
+            y: at.y + Math.sin(mAngle) * 105,
+            size: 52,
+            content: <span style={{ fontSize: u(17) }}>{j + 1}</span>,
+            label: m.title,
+            active: j === moduleIdx,
+            onClick: () => select(c.id, j),
+            delay: 30 * j,
+          });
+          edges.push([id, mid]);
+        });
       });
-      edges.push([id, mid]);
     });
   });
 
   if (pending) {
     nodes.push({
       id: 'pending',
-      ...slot(visible.length),
+      ...slot(tree.length),
       size: 80,
-      content: branchIcon(iconFor(pending.topic)),
+      content: <Icon name={iconFor(pending.topic)} size={u(31)} strokeWidth={1.3} />,
       label: pending.error ? 'Ошибка' : 'Собираю курс…',
       showLabel: true,
       pulse: !pending.error,
