@@ -33,6 +33,14 @@ export interface Module {
   lessons: Lesson[];
 }
 
+// Сфера или подтема; у подтемы parent — её сфера
+export interface CategoryBrief {
+  id: string;
+  label: string;
+  icon?: string | null;
+  parent?: CategoryBrief | null;
+}
+
 export interface Course {
   id: string;
   title: string;
@@ -42,6 +50,7 @@ export interface Course {
   created_by: string;
   created_at: string;
   views: number;
+  category?: CategoryBrief | null;
   modules?: Module[];
 }
 
