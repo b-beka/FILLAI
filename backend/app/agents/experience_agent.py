@@ -1,9 +1,12 @@
 """Агент для генерации контента различных типов опыта (Experience Types)"""
 from typing import Dict, Any, List
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_openai import ChatOpenAI
+from app.agents.llm import make_llm
+import asyncio
 import json
 import os
+
+import openai
 from app.models import ExperienceType
 
 class ExperienceAgent:
@@ -12,7 +15,7 @@ class ExperienceAgent:
     def __init__(self, model_name: str = None, temperature: float = 0.7):
         if model_name is None:
             model_name = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-        self.llm = ChatOpenAI(model=model_name, temperature=temperature)
+        self.llm = make_llm(model_name, temperature)
         
         # --- PROMPTS ---
         
@@ -231,7 +234,10 @@ class ExperienceAgent:
             
             return json.loads(content)
             
-        except Exception as e:
+        except (openai.APIError, asyncio.TimeoutError):
+            # Ошибки провайдера (429, таймаут) не прячем: иначе получится «успешный» курс с пустыми уроками
+            raise
+        except json.JSONDecodeError as e:
             print(f"Error generating experience {experience_type}: {e}")
             # Fallback structure
             return {

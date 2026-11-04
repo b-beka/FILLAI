@@ -18,6 +18,7 @@ else:
     engine = create_engine(
         DATABASE_URL,
         pool_pre_ping=True,  # Verify connections before using
+        connect_args={"connect_timeout": 10},  # недоступная база не должна вешать запрос надолго
         pool_size=5,
         max_overflow=5,
         echo=False  # Set to True for SQL query logging in development

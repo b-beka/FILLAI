@@ -6,7 +6,7 @@ import type { Level } from '@/lib/api';
 import { LEVELS } from '@/lib/course';
 import { u } from '@/lib/units';
 
-// Слой «поиск»: 676×58, лупа 31 слева, «+» справа; кнопка «>» — со слайдов презентации
+// Слой «поиск»: 676×58, лупа 31 слева, справа «+» и кнопка «>» (внутри строки, на самом краю)
 export default function SearchBar({
   value,
   onChange,
@@ -15,19 +15,21 @@ export default function SearchBar({
 }: {
   value: string;
   onChange: (v: string) => void;
-  onSubmit: (topic: string, level: Level, files: { name: string; content: string }[]) => void;
+  // from — прямоугольник стрелки на экране: откуда стартует полёт в граф
+  onSubmit: (topic: string, level: Level, files: { name: string; content: string }[], from: DOMRect | null) => void;
   disabled?: boolean;
 }) {
   const [menu, setMenu] = useState(false);
   const [level, setLevel] = useState<Level>('beginner');
   const [files, setFiles] = useState<{ name: string; content: string }[]>([]);
   const fileInput = useRef<HTMLInputElement>(null);
+  const arrow = useRef<HTMLButtonElement>(null);
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
     const topic = value.trim();
     if (!topic || disabled) return;
-    onSubmit(topic, level, files);
+    onSubmit(topic, level, files, arrow.current?.getBoundingClientRect() ?? null);
     setFiles([]);
     setMenu(false);
   };
@@ -44,8 +46,8 @@ export default function SearchBar({
     <form
       onSubmit={submit}
       className="search pointer-events-auto absolute left-1/2 flex -translate-x-1/2 items-center"
-      // Отступ слева = кнопка + зазор, чтобы сама строка стояла по центру холста, как в макете
-      style={{ bottom: u(100), gap: u(22), paddingLeft: u(66) }}
+      // Кнопка внутри строки, поэтому сама строка стоит по центру холста без отступов
+      style={{ bottom: u(100) }}
     >
       <div className="relative">
         {menu && (
@@ -85,7 +87,7 @@ export default function SearchBar({
           </div>
         )}
 
-        <label className="flex items-center rounded-full bg-field text-field-ink" style={{ width: u(676), height: u(58), paddingLeft: u(19), paddingRight: u(22) }}>
+        <label className="flex items-center rounded-full bg-field text-field-ink" style={{ width: u(676), height: u(58), paddingLeft: u(19), paddingRight: u(7) }}>
           <Icon name="search" size={u(31)} strokeWidth={2} className="shrink-0" />
           <input
             value={value}
@@ -102,21 +104,22 @@ export default function SearchBar({
             aria-label="Уровень и материалы"
             aria-expanded={menu}
             className={`shrink-0 transition hover:opacity-70 ${menu ? 'rotate-45' : ''}`}
+            style={{ marginRight: u(10) }}
           >
             <Icon name="plus" size={u(26)} strokeWidth={1.4} />
           </button>
+          <button
+            ref={arrow}
+            type="submit"
+            disabled={disabled || !value.trim()}
+            aria-label="Создать курс"
+            className="flex shrink-0 items-center justify-center rounded-full bg-field-ink text-field transition hover:brightness-95 disabled:opacity-50"
+            style={{ width: u(44), height: u(44) }}
+          >
+            <Icon name="chevron" size={u(24)} strokeWidth={1.6} />
+          </button>
         </label>
       </div>
-
-      <button
-        type="submit"
-        disabled={disabled || !value.trim()}
-        aria-label="Создать курс"
-        className="flex shrink-0 items-center justify-center rounded-full bg-field text-field-ink transition hover:brightness-95 disabled:opacity-50"
-        style={{ width: u(44), height: u(44) }}
-      >
-        <Icon name="chevron" size={u(24)} strokeWidth={1.6} />
-      </button>
     </form>
   );
 }

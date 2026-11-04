@@ -1,4 +1,5 @@
 """FastAPI приложение для генерации курсов"""
+import asyncio
 import logging
 import sys
 import json
@@ -91,6 +92,10 @@ from app.models import (
     ClarifyingQuestionsRequest,
     ClarifyingQuestionsResponse,
 )
+from openai import APITimeoutError
+
+# Общий срок генерации курса, секунд
+COURSE_TIMEOUT_SECONDS = float(os.getenv("COURSE_TIMEOUT_SECONDS", "600"))
 from app.agents.course_coordinator import CourseCoordinator
 from app.agents.grading_agent import ExerciseGradingAgent
 from app.agents.assistant_agent import PersonalAssistantAgent
@@ -101,6 +106,7 @@ from app.dependencies import check_generation_limit, increment_generation_count
 from app.database import get_db
 from app.db_models import User
 from fastapi import Depends
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 app = FastAPI(
@@ -210,12 +216,20 @@ async def root():
 
 
 @app.get("/health")
-async def health_check():
+def health_check(db: Session = Depends(get_db)):
     """Проверка здоровья сервиса"""
+    # Короткий настоящий запрос; текст ошибки наружу не отдаём (в нём может быть адрес базы)
+    try:
+        db.execute(text("SELECT 1"))
+        db_ok = True
+    except Exception:
+        logger.error("Проверка базы в /health не прошла", exc_info=True)
+        db_ok = False
     return {
-        "status": "healthy",
+        "status": "healthy" if db_ok else "degraded",
         "service": "course-generation-api",
         "ai_ready": bool(os.getenv("OPENAI_API_KEY", "").strip()),
+        "db": db_ok,
     }
 
 
@@ -278,31 +292,23 @@ async def generate_course(
             request.settings.reference_files = request.reference_files
 
         # Генерируем курс используя мультиагентную систему
-        generated_course = await coordinator.generate_course(
-            settings=request.settings,
-            structure_override=request.structure_override,
+        generated_course = await asyncio.wait_for(
+            coordinator.generate_course(
+                settings=request.settings,
+                structure_override=request.structure_override,
+            ),
+            timeout=COURSE_TIMEOUT_SECONDS,
         )
         
         # --- SAVE TO DIRECTORY (Database) ---
         import uuid
         from app.db_models import Course, CourseModule, Lesson, Category, Enrollment, Tag
         
-        # 1. Handle Category
-        # Try to find existing category by label or ID
-        category_name = generated_course.category
-        db_category = db.query(Category).filter(Category.label == category_name).first()
-        if not db_category:
-            # Try by ID if it looks like a stripped string
-            cat_id_candidate = category_name.lower().replace(" ", "-")
-            # Just create new one if not found, to be safe
-            db_category = Category(
-                id=uuid.uuid4(),
-                label=category_name,
-                description=f"Generated category for {category_name}"
-            )
-            db.add(db_category)
-            db.flush()
-            
+        # 1. Сфера и подтема курса (при сбое - сфера «Общее»)
+        from app.services.topic_classifier import place_course
+        db_category = await place_course(db, generated_course.title)
+        category_id = db_category.id if db_category else None
+
         # 2. Create Course
         course_id = uuid.uuid4() # Generated proper UUID
         
@@ -310,7 +316,7 @@ async def generate_course(
             id=course_id,
             title=generated_course.title,
             description=generated_course.description,
-            category_id=db_category.id,
+            category_id=category_id,
             created_by=current_user.id,
             format="Онлайн", # Default
             level=generated_course.difficulty.value,
@@ -415,6 +421,13 @@ async def generate_course(
             error_msg = f"Модель '{current_model}' недоступна. Проверьте OPENAI_MODEL в .env файле. Попробуйте: gpt-3.5-turbo, gpt-4o, gpt-4o-mini"
         elif "api key" in error_msg.lower() or "authentication" in error_msg.lower():
             error_msg = "Неверный API ключ. Проверьте OPENAI_API_KEY в .env файле."
+        elif isinstance(e, (TimeoutError, APITimeoutError)) or "timed out" in error_msg.lower():
+            error_msg = "Модель не ответила вовремя. Попробуйте ещё раз через минуту."
+        elif "per-day" in error_msg.lower() or "per_day" in error_msg.lower():
+            # у бесплатных моделей OpenRouter есть суточный лимит: ждать минуты бесполезно
+            error_msg = "Дневной лимит бесплатной модели исчерпан, попробуйте завтра."
+        elif "429" in error_msg or "rate limit" in error_msg.lower():
+            error_msg = "Достигнут лимит запросов к ИИ-провайдеру. Подождите несколько минут и попробуйте снова."
         
         return CourseGenerationResponse(
             success=False,

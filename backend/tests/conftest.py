@@ -1,7 +1,7 @@
 """Pytest configuration and fixtures"""
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 import os
@@ -23,6 +23,14 @@ engine = create_engine(
     connect_args={"check_same_thread": False},
     poolclass=StaticPool,
 )
+
+
+@event.listens_for(engine, "connect")
+def _unicode_lower(dbapi_connection, _record):
+    # lower() в SQLite знает только ASCII; в Postgres он работает с кириллицей, ведём себя так же
+    dbapi_connection.create_function("lower", 1, lambda v: v.lower() if isinstance(v, str) else v, deterministic=True)
+
+
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

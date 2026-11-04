@@ -1,5 +1,5 @@
 """Database models using SQLAlchemy"""
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Text, Float, Table
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, ForeignKey, Text, Float, Table, Index, text
 from sqlalchemy import Uuid
 
 
@@ -58,9 +58,24 @@ class Category(Base):
     label = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    # Дерево глубиной 2: сфера (parent_id пуст) -> подтема
+    parent_id = Column(UUID(as_uuid=True), ForeignKey('categories.id', ondelete='CASCADE'), nullable=True, index=True)
+    icon = Column(String(50), nullable=True)
+
+    # Уникальность названия среди соседей без учёта регистра; coalesce нужен, чтобы NULL-родитель (сферы) тоже считался
+    __table_args__ = (
+        Index(
+            "uq_category_sibling",
+            func.lower(label),
+            func.coalesce(parent_id, text("'00000000-0000-0000-0000-000000000000'")),
+            unique=True,
+        ),
+    )
 
     # Relationships
     courses = relationship("Course", back_populates="category")
+    parent = relationship("Category", remote_side=[id], back_populates="children")
+    children = relationship("Category", back_populates="parent", cascade="all, delete-orphan")
 
 
 class Course(Base):

@@ -1,6 +1,6 @@
 """Личный ИИ-ассистент для пользователя."""
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_openai import ChatOpenAI
+from app.agents.llm import make_llm
 from typing import Dict, Any, List
 import os
 
@@ -14,7 +14,7 @@ class PersonalAssistantAgent:
     def __init__(self, model_name: str | None = None, temperature: float = 0.7):
         if model_name is None:
             model_name = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")
-        self.llm = ChatOpenAI(model=model_name, temperature=temperature)
+        self.llm = make_llm(model_name, temperature)
         self.system_prompt = ChatPromptTemplate.from_messages(
             [
                 (

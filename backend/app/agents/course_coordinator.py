@@ -14,6 +14,8 @@ from app.models import (
 )
 import asyncio
 import json
+
+import openai
 import uuid
 
 class CourseCoordinator:
@@ -75,7 +77,14 @@ class CourseCoordinator:
             generate_tasks.append((module_data, task))
             
         # Выполнение задач
-        results = await asyncio.gather(*[t for _, t in generate_tasks])
+        # TaskGroup отменяет соседние модули при первой ошибке, чтобы они не тратили квоту модели
+        try:
+            async with asyncio.TaskGroup() as group:
+                running = [group.create_task(t) for _, t in generate_tasks]
+        except ExceptionGroup as eg:
+            # наружу отдаём саму ошибку, а не группу: main.py разбирает её по типу
+            raise eg.exceptions[0] from None
+        results = [t.result() for t in running]
         
         for (module_data, _), lessons_list in zip(generate_tasks, results):
             module_title = module_data.get("title", "Модуль")
@@ -91,7 +100,7 @@ class CourseCoordinator:
             total_duration += module.duration_hours
         
         # 5. Сборка курса
-        category = settings.custom_category_name or self._determine_category(settings.title)
+        category = settings.custom_category_name or "Общее"
         
         return Course(
             id=self._generate_course_id(settings.title),
@@ -158,6 +167,9 @@ class CourseCoordinator:
                     
                     if "images" in materials:
                         images = materials["images"]
+            except (openai.APIError, asyncio.TimeoutError):
+                # сбой провайдера - это не «нет видео», курс без контента сохранять нельзя
+                raise
             except Exception as e:
                 print(f"Error finding videos for lesson {l_title}: {e}")
             
@@ -217,20 +229,6 @@ class CourseCoordinator:
         
         return "\n".join(md)
 
-    
-    def _determine_category(self, title: str) -> str:
-        """Определяет категорию курса на основе названия"""
-        title_lower = title.lower()
-        if any(word in title_lower for word in ["английский", "english", "язык", "language"]):
-            return "Языки"
-        elif any(word in title_lower for word in ["программирование", "coding", "python", "javascript"]):
-            return "Программирование"
-        elif any(word in title_lower for word in ["математика", "math", "физика", "physics"]):
-            return "Наука"
-        elif any(word in title_lower for word in ["дизайн", "design", "графика"]):
-            return "Дизайн"
-        else:
-            return "Общее"
     
     def _generate_course_id(self, title: str) -> str:
         return str(uuid.uuid4())

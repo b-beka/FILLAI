@@ -95,8 +95,21 @@ class CategoryBase(BaseModel):
     description: Optional[str] = None
 
 
+class CategoryBrief(BaseModel):
+    """Категория курса: подтема с вложенной сферой (глубина дерева 2)"""
+    id: UUID
+    label: str
+    icon: Optional[str] = None
+    parent: Optional["CategoryBrief"] = None
+
+    class Config:
+        from_attributes = True
+
+
 class CategoryResponse(CategoryBase):
     id: UUID
+    icon: Optional[str] = None
+    parent_id: Optional[UUID] = None
     created_at: datetime
     # We might want to include courses count or something, but for now keep it simple
 
@@ -148,6 +161,7 @@ class CourseResponse(CourseBase):
     created_at: datetime
     updated_at: datetime
     modules: Optional[List[ModuleResponse]] = []
+    category: Optional[CategoryBrief] = None
 
     class Config:
         from_attributes = True

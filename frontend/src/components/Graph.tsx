@@ -16,6 +16,7 @@ export interface GraphNode {
   active?: boolean;
   pulse?: boolean;
   delay?: number;
+  hidden?: boolean; // участвует в раскладке, но невидим и не ловит указатель
 }
 
 export type Point = { x: number; y: number };
@@ -83,6 +84,12 @@ export function LivingGraph({
       bodies.current.set(n.id, { x: n.x, y: n.y, vx: 0, vy: 0 });
       alpha.current = Math.max(alpha.current, 0.6);
     }
+  }
+  // Исчезнувшие узлы (например, pending после генерации) убираем: иначе второй курс
+  // за сессию встанет на старое тело, и симуляция не проснётся
+  if (bodies.current.size > nodes.length) {
+    const live = new Set(nodes.map((n) => n.id));
+    for (const id of Array.from(bodies.current.keys())) if (!live.has(id)) bodies.current.delete(id);
   }
 
   // Указатель → координаты сцены (центр пользователя = 0,0, без учёта зума)
@@ -221,6 +228,7 @@ export function LivingGraph({
       if (b === hover) neighbours.add(a);
     }
   }
+  const hiddenIds = new Set(nodes.filter((n) => n.hidden).map((n) => n.id));
   const dim = (id: string) => hover !== null && !neighbours.has(id);
 
   const startDrag = (id: string) => (e: React.PointerEvent) => {
@@ -266,7 +274,7 @@ export function LivingGraph({
           {edges.map(([a, b]) => {
             const p = world(a);
             const q = world(b);
-            if (!p || !q) return null;
+            if (!p || !q || hiddenIds.has(a) || hiddenIds.has(b)) return null;
             const faded = hover !== null && !(neighbours.has(a) && neighbours.has(b));
             return (
               <line
@@ -317,6 +325,7 @@ export function LivingGraph({
                 height: u(n.size),
                 transform: `translate(-50%, -50%) scale(${dragging ? 1.08 : 1})`,
                 opacity: dim(n.id) ? 0.35 : 1,
+                visibility: n.hidden ? 'hidden' : undefined,
                 transition: 'transform 150ms ease-out, opacity 150ms',
                 animationDelay: n.delay ? `${n.delay}ms` : undefined,
               }}
