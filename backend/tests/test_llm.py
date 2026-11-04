@@ -11,7 +11,7 @@ from app.main import coordinator
 
 def test_make_llm_sets_timeout_and_retries():
     llm = make_llm("m", 0.1)
-    assert llm.request_timeout == 60 and llm.max_retries == 2
+    assert llm.request_timeout == 60 and llm.max_retries == 1
 
 
 def test_all_agents_share_one_rate_limiter():
@@ -55,6 +55,22 @@ def test_builtin_timeout_gives_friendly_error(client, auth_headers, monkeypatch)
         raise TimeoutError()
 
     monkeypatch.setattr(coordinator, "_obj", type("C", (), {"generate_course": staticmethod(fail)})())
+    data = _post_generate(client, auth_headers)
+    assert data["success"] is False
+    assert "модель не ответила" in data["error"].lower()
+
+
+def test_course_total_deadline_gives_friendly_error(client, auth_headers, monkeypatch):
+    import asyncio
+    import app.main as main_module
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(main_module, "COURSE_TIMEOUT_SECONDS", 0.05)
+
+    async def slow(*a, **k):
+        await asyncio.sleep(1)
+
+    monkeypatch.setattr(coordinator, "_obj", type("C", (), {"generate_course": staticmethod(slow)})())
     data = _post_generate(client, auth_headers)
     assert data["success"] is False
     assert "модель не ответила" in data["error"].lower()

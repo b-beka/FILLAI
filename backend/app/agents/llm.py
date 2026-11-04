@@ -6,7 +6,7 @@ from langchain_openai import ChatOpenAI
 
 # Без таймаута зависший запрос ждёт вечно, поэтому ограничиваем каждый вызов
 LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "60"))
-LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "2"))
+LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "1"))
 # Бесплатный тариф OpenRouter - около 20 запросов в минуту
 LLM_REQUESTS_PER_SECOND = float(os.getenv("LLM_REQUESTS_PER_SECOND", "0.3"))
 

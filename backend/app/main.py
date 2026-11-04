@@ -1,4 +1,5 @@
 """FastAPI приложение для генерации курсов"""
+import asyncio
 import logging
 import sys
 import json
@@ -92,6 +93,9 @@ from app.models import (
     ClarifyingQuestionsResponse,
 )
 from openai import APITimeoutError
+
+# Общий срок генерации курса, секунд
+COURSE_TIMEOUT_SECONDS = float(os.getenv("COURSE_TIMEOUT_SECONDS", "600"))
 from app.agents.course_coordinator import CourseCoordinator
 from app.agents.grading_agent import ExerciseGradingAgent
 from app.agents.assistant_agent import PersonalAssistantAgent
@@ -288,9 +292,12 @@ async def generate_course(
             request.settings.reference_files = request.reference_files
 
         # Генерируем курс используя мультиагентную систему
-        generated_course = await coordinator.generate_course(
-            settings=request.settings,
-            structure_override=request.structure_override,
+        generated_course = await asyncio.wait_for(
+            coordinator.generate_course(
+                settings=request.settings,
+                structure_override=request.structure_override,
+            ),
+            timeout=COURSE_TIMEOUT_SECONDS,
         )
         
         # --- SAVE TO DIRECTORY (Database) ---
