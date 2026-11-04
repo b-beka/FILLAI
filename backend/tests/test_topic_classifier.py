@@ -48,3 +48,11 @@ async def test_known_spheres_reach_the_prompt():
         return '{"sphere":"Языки","sphere_icon":"globe","subtopic":"Казахский","subtopic_icon":"book"}'
     await classify_topic("Казахский", {"Языки": ["Английский"]}, complete=fake)
     assert "Языки" in seen["p"] and "Английский" in seen["p"]
+
+
+@pytest.mark.asyncio
+async def test_sphere_mapped_to_existing_key():
+    async def fake(_):
+        return '{"sphere":" ЯЗЫКИ ","sphere_icon":"globe","subtopic":"Казахский","subtopic_icon":"book"}'
+    p = await classify_topic("Казахский", {"Языки": []}, complete=fake)
+    assert p.sphere == "Языки"

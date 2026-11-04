@@ -7,11 +7,10 @@ import re
 from dataclasses import dataclass
 from typing import Awaitable, Callable, Optional
 
-from app.topic_icons import FALLBACK_ICON, ICON_NAMES
+from app.topic_icons import FALLBACK_ICON, GENERAL_SPHERE, ICON_NAMES
 
 logger = logging.getLogger(__name__)
 
-GENERAL_SPHERE = "Общее"
 MAX_LABEL_LEN = 60
 MODEL_TIMEOUT = 30
 
@@ -109,7 +108,11 @@ async def classify_topic(
     """Определяет сферу и подтему курса; при любой ошибке — сфера «Общее»"""
     try:
         raw = await (complete or _default_complete)(_build_prompt(title, known))
-        return parse_placement(raw, title)
+        placement = parse_placement(raw, title)
+        # Сфера, отличающаяся от существующей только регистром/пробелами, - та же сфера
+        by_norm = {normalize_label(k): k for k in known}
+        placement.sphere = by_norm.get(normalize_label(placement.sphere), placement.sphere)
+        return placement
     except Exception:
         logger.exception("Не удалось определить сферу курса %r", title)
         return TopicPlacement(GENERAL_SPHERE, FALLBACK_ICON, title[:MAX_LABEL_LEN], FALLBACK_ICON)

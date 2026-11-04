@@ -1,6 +1,7 @@
 """Допустимые имена иконок Lucide для сфер и подтем (kebab-case)"""
 
 FALLBACK_ICON = "book"
+GENERAL_SPHERE = "Общее"
 
 ICON_NAMES: frozenset[str] = frozenset(
     """
